@@ -11,7 +11,10 @@ import 'package:record/record.dart';
 import 'package:whatsapp_clone/chat/chat_service.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
 import 'package:whatsapp_clone/models/message_model.dart';
+import 'package:whatsapp_clone/providers/media_provider.dart';
 import 'package:whatsapp_clone/providers/messages_provider.dart';
+import 'package:whatsapp_clone/providers/recording_provider.dart';
+import 'package:whatsapp_clone/providers/upload_provider.dart';
 import 'package:whatsapp_clone/utils/date_time_utils.dart';
 import 'package:whatsapp_clone/screens/chat/chat_screen.dart';
 import 'package:whatsapp_clone/screens/chat/helpers/chat_helpers.dart';
@@ -39,16 +42,6 @@ class ChatScreenState extends State<ChatScreen>
   final Map<String, String> _cachedAttachmentPaths = <String, String>{};
   final Map<String, String> _videoThumbnailPaths = <String, String>{};
   String? _attachmentCacheDirPath;
-
-  File? _selectedMediaFile;
-  String? _selectedMediaType;
-  Uint8List? _selectedVideoThumbnail;
-  bool _isRecordingVoice = false;
-  Duration _recordingDuration = Duration.zero;
-  Timer? _recordingTimer;
-  String? _playingAudioMessageId;
-  double _recordingSlideOffset = 0;
-  bool _recordingCancelTriggered = false;
 
   // Getters for mixins
   @override
@@ -97,10 +90,10 @@ class ChatScreenState extends State<ChatScreen>
   String? get playingAudioMessageId => recordingProvider.playingAudioMessageId;
 
   @override
-  double get recordingSlideOffset => recordingProvider.slideOffset;
+  double get recordingSlideOffset => recordingProvider.recordingSlideOffset;
 
   @override
-  bool get recordingCancelTriggered => recordingProvider.cancelTriggered;
+  bool get recordingCancelTriggered => recordingProvider.recordingCancelTriggered;
 
   @override
   Map<String, String> get cachedAttachmentPaths => uploadProvider.cachedAttachmentPaths;
@@ -114,6 +107,19 @@ class ChatScreenState extends State<ChatScreen>
   @override
   ScrollController get scrollController => _scrollController;
 
+  /// Provider accessors
+  @override
+  RecordingStateNotifier get recordingProvider =>
+      Provider.of<RecordingStateNotifier>(context, listen: false);
+
+  @override
+  MediaStateNotifier get mediaProvider =>
+      Provider.of<MediaStateNotifier>(context, listen: false);
+
+  @override
+  UploadStateNotifier get uploadProvider =>
+      Provider.of<UploadStateNotifier>(context, listen: false);
+
   /// Scoped provider accessor for messages (per-chat instance)
   MessagesStateNotifier get messagesProvider =>
       Provider.of<MessagesStateNotifier>(context, listen: false);
@@ -125,9 +131,7 @@ class ChatScreenState extends State<ChatScreen>
     _messageController.addListener(_onComposerChanged);
     _audioPlayer.onPlayerComplete.listen((_) {
       if (!mounted) return;
-      setState(() {
-        _playingAudioMessageId = null;
-      });
+      recordingProvider.setPlayingAudioMessageId(null);
     });
     initializeAttachmentCacheDir();
     _loadMessages(scrollToBottom: true);
@@ -149,7 +153,7 @@ class ChatScreenState extends State<ChatScreen>
 
   @override
   void dispose() {
-    _recordingTimer?.cancel();
+    recordingProvider.recordingTimer?.cancel();
     unawaited(_audioRecorder.dispose());
     unawaited(_audioPlayer.dispose());
     _incomingSubscription?.cancel();
@@ -242,7 +246,7 @@ class ChatScreenState extends State<ChatScreen>
   }
 
   void _sendMessage() {
-    if (_selectedMediaFile != null) {
+    if (mediaProvider.selectedMediaFile != null) {
       unawaited(sendSelectedMedia());
       return;
     }
@@ -322,35 +326,25 @@ class ChatScreenState extends State<ChatScreen>
   @override
   void setSelectedMediaFile(File? file) {
     if (!mounted) return;
-    setState(() {
-      _selectedMediaFile = file;
-    });
+    mediaProvider.setSelectedMediaFile(file);
   }
 
   @override
   void setSelectedMediaType(String? type) {
     if (!mounted) return;
-    setState(() {
-      _selectedMediaType = type;
-    });
+    mediaProvider.setSelectedMediaType(type);
   }
 
   @override
   void setSelectedVideoThumbnail(Uint8List? thumbnail) {
     if (!mounted) return;
-    setState(() {
-      _selectedVideoThumbnail = thumbnail;
-    });
+    mediaProvider.setSelectedVideoThumbnail(thumbnail);
   }
 
   @override
   void clearSelectedMedia() {
     if (!mounted) return;
-    setState(() {
-      _selectedMediaFile = null;
-      _selectedMediaType = null;
-      _selectedVideoThumbnail = null;
-    });
+    mediaProvider.clear();
   }
 
   @override
@@ -439,49 +433,37 @@ class ChatScreenState extends State<ChatScreen>
   @override
   void setIsRecordingVoice(bool value) {
     if (!mounted) return;
-    setState(() {
-      _isRecordingVoice = value;
-    });
+    recordingProvider.setIsRecording(value);
   }
 
   @override
   void setRecordingDuration(Duration duration) {
     if (!mounted) return;
-    setState(() {
-      _recordingDuration = duration;
-    });
+    recordingProvider.setRecordingDuration(duration);
   }
 
   @override
   void setRecordingTimer(Timer? timer) {
     if (!mounted) return;
-    setState(() {
-      _recordingTimer = timer;
-    });
+    recordingProvider.setRecordingTimer(timer);
   }
 
   @override
   void setRecordingSlideOffset(double offset) {
     if (!mounted) return;
-    setState(() {
-      _recordingSlideOffset = offset;
-    });
+    recordingProvider.setRecordingSlideOffset(offset);
   }
 
   @override
   void setRecordingCancelTriggered(bool value) {
     if (!mounted) return;
-    setState(() {
-      _recordingCancelTriggered = value;
-    });
+    recordingProvider.setRecordingCancelTriggered(value);
   }
 
   @override
   void setPlayingAudioMessageId(String? id) {
     if (!mounted) return;
-    setState(() {
-      _playingAudioMessageId = id;
-    });
+    recordingProvider.setPlayingAudioMessageId(id);
   }
 
   @override
@@ -689,7 +671,7 @@ class ChatScreenState extends State<ChatScreen>
             isDark: isDark,
             isRecordingVoice: recordingState.isRecording,
             recordingDuration: recordingState.recordingDuration,
-            recordingSlideOffset: recordingState.slideOffset,
+            recordingSlideOffset: recordingState.recordingSlideOffset,
             recordingWaveform: buildRecordingWaveform(isDark),
             selectedMediaFile: mediaState.selectedMediaFile,
             selectedMediaType: mediaState.selectedMediaType,
