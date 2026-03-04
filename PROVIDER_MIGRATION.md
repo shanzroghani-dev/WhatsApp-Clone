@@ -5,20 +5,22 @@ This document explains the new provider-based state management and how to migrat
 ### Current State (✅ DONE)
 
 **Providers Created:**
-1. `RecordingStateNotifier` - Voice recording state (isRecording, duration, etc.)
-2. `MediaStateNotifier` - Media selection state (selectedFile, type, thumbnail)
-3. `MessagesStateNotifier` - Messages list and visibility
+1. `RecordingStateNotifier` - Voice recording state
+2. `MediaStateNotifier` - Media selection state
+3. `UploadStateNotifier` - Upload progress and caching state (Phase 3)
+4. `MessagesStateNotifier` - Messages list and visibility
 
 **Application Setup:**
 - App wrapped with `MultiProvider` in `main.dart`
-- All providers initialized automatically
+- All 4 providers initialized automatically
 - ✅ **Phase 1 Complete**: Provider infrastructure ready
-- ✅ **Phase 2 Complete**: VoiceMessageHandler migrated to use providers
+- ✅ **Phase 2 Complete**: VoiceMessageHandler migrated
+- ✅ **Phase 3 Complete**: MediaHandler migrated (media + upload state)
 
 **Migration Status:**
-- ✅ VoiceMessageHandler uses RecordingStateNotifier directly
-- ❌ MediaHandler still uses setState (next phase)
-- ❌ MessageBuilder still uses setState (next phase)
+- ✅ VoiceMessageHandler uses RecordingStateNotifier
+- ✅ MediaHandler uses MediaStateNotifier + UploadStateNotifier
+- ❌ MessageBuilder still uses setState (final phase)
 
 ### How to Use Providers
 
@@ -61,12 +63,26 @@ recordingState.setRecordingDuration(Duration(seconds: 5));
 - ✅ 0 compilation errors, all lint warnings pre-existing
 - ✅ Voice recording fully functional with provider state management
 
-#### Phase 3: Migrate Media Feature (Next)
-- Update `MediaHandler` mixin to use `MediaStateNotifier`
-- Replace media selection state updates
-- Test thoroughly
+#### Phase 3: Migrate Media Feature ✅ COMPLETE
+- ✅ Created `UploadStateNotifier` for upload progress and caching
+- ✅ Updated `MediaHandler` mixin to use `MediaStateNotifier` and `UploadStateNotifier`
+- ✅ Added mediaProvider and uploadProvider getters to mixin
+- ✅ Replaced all media state setter calls:
+  * `setSelectedMediaFile()` → `mediaProvider.setSelectedMediaFile()`
+  * `setSelectedMediaType()` → `mediaProvider.setSelectedMediaType()`
+  * `setSelectedVideoThumbnail()` → `mediaProvider.setSelectedVideoThumbnail()`
+  * `clearSelectedMedia()` → `mediaProvider.clear()`
+- ✅ Replaced all upload state setter calls:
+  * `addUploadingMessageId()` → `uploadProvider.addUploadingMessageId()`
+  * `removeUploadingMessageId()` → `uploadProvider.removeUploadingMessageId()`
+  * `updateCachedAttachmentPath()` → `uploadProvider.updateCachedAttachmentPath()`
+  * `removeCachedAttachmentPath()` → `uploadProvider.removeCachedAttachmentPath()`
+  * `updateVideoThumbnailPath()` → `uploadProvider.updateVideoThumbnailPath()`
+  * `removeVideoThumbnailPath()` → `uploadProvider.removeVideoThumbnailPath()`
+- ✅ 0 compilation errors, all lint warnings pre-existing
+- ✅ Media file selection and upload fully functional with providers
 
-#### Phase 4: Migrate Messages Feature (Final)
+#### Phase 4: Migrate Messages Feature (Next)
 - Update `MessageBuilder` mixin to use `MessagesStateNotifier`
 
 ### Implementation Example - Phase 2 (Voice Recording) ✅ COMPLETE

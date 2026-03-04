@@ -5,8 +5,11 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 import 'package:whatsapp_clone/chat/chat_service.dart';
 import 'package:whatsapp_clone/models/message_model.dart';
+import 'package:whatsapp_clone/providers/media_provider.dart';
+import 'package:whatsapp_clone/providers/upload_provider.dart';
 import 'package:whatsapp_clone/screens/chat/helpers/chat_helpers.dart';
 import 'package:whatsapp_clone/screens/chat/widgets/media_preview_screen.dart';
 
@@ -34,6 +37,13 @@ mixin MediaHandler {
   /// Getters for dependent state
   String get currentUserId;
   String get peerUserId;
+
+  /// Provider accessors
+  MediaStateNotifier get mediaProvider =>
+      Provider.of<MediaStateNotifier>(context, listen: false);
+
+  UploadStateNotifier get uploadProvider =>
+      Provider.of<UploadStateNotifier>(context, listen: false);
 
   /// State update method
   void setState(VoidCallback fn);
@@ -111,11 +121,11 @@ mixin MediaHandler {
             '$attachmentCacheDirPath/${tempMessageId}_thumbnail.jpg';
       }
 
-      addUploadingMessageId(tempMessageId);
+      uploadProvider.addUploadingMessageId(tempMessageId);
       insertMessage(tempMessage);
       incrementVisibleCount();
-      updateCachedAttachmentPath(tempMessageId, previewPath);
-      clearSelectedMedia();
+      uploadProvider.updateCachedAttachmentPath(tempMessageId, previewPath);
+      mediaProvider.clear();
       messageController.clear();
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -161,7 +171,7 @@ mixin MediaHandler {
         final thumbnailFile = File(thumbnailPath);
         await thumbnailFile.writeAsBytes(thumbnailBytes, flush: true);
         if (mounted) {
-          updateVideoThumbnailPath(tempMessageId, thumbnailPath);
+          uploadProvider.updateVideoThumbnailPath(tempMessageId, thumbnailPath);
         }
       }
 
@@ -175,7 +185,7 @@ mixin MediaHandler {
         final cacheFile = File(cachePath);
         await cacheFile.writeAsBytes(bytes, flush: true);
         if (mounted) {
-          updateCachedAttachmentPath(tempMessageId, cachePath);
+          uploadProvider.updateCachedAttachmentPath(tempMessageId, cachePath);
         }
       }
 
@@ -204,21 +214,28 @@ mixin MediaHandler {
           );
           try {
             await oldFile.rename(newThumbnailPath);
-            updateVideoThumbnailPath(realMessage.id, newThumbnailPath);
-            removeVideoThumbnailPath(tempMessageId);
+            uploadProvider.updateVideoThumbnailPath(
+              realMessage.id,
+              newThumbnailPath,
+            );
+            uploadProvider.removeVideoThumbnailPath(tempMessageId);
           } catch (e) {
-            updateVideoThumbnailPath(realMessage.id, oldThumbnailPath);
-            removeVideoThumbnailPath(tempMessageId);
+            uploadProvider.updateVideoThumbnailPath(
+              realMessage.id,
+              oldThumbnailPath,
+            );
+            uploadProvider.removeVideoThumbnailPath(tempMessageId);
           }
         }
       }
 
       if (mounted) {
-        removeUploadingMessageId(tempMessageId);
-        if (cachedAttachmentPaths.containsKey(tempMessageId)) {
-          final tempPath = cachedAttachmentPaths[tempMessageId]!;
-          updateCachedAttachmentPath(realMessage.id, tempPath);
-          removeCachedAttachmentPath(tempMessageId);
+        uploadProvider.removeUploadingMessageId(tempMessageId);
+        if (uploadProvider.cachedAttachmentPaths.containsKey(tempMessageId)) {
+          final tempPath =
+              uploadProvider.cachedAttachmentPaths[tempMessageId]!;
+          uploadProvider.updateCachedAttachmentPath(realMessage.id, tempPath);
+          uploadProvider.removeCachedAttachmentPath(tempMessageId);
         }
       }
     } catch (e) {
@@ -227,13 +244,13 @@ mixin MediaHandler {
         context,
       ).showSnackBar(const SnackBar(content: Text('Failed to send media')));
       removeMessage(tempMessageId);
-      removeUploadingMessageId(tempMessageId);
+      uploadProvider.removeUploadingMessageId(tempMessageId);
     }
   }
 
   /// Cancel selected media
   void cancelSelectedMedia() {
-    clearSelectedMedia();
+    mediaProvider.clear();
   }
 
   /// Pick and send image attachment
@@ -282,9 +299,9 @@ mixin MediaHandler {
 
       if (!mounted) return;
 
-      setSelectedMediaFile(File(picked.path));
-      setSelectedMediaType(isVideo ? 'video' : 'image');
-      setSelectedVideoThumbnail(videoThumbnail);
+      mediaProvider.setSelectedMediaFile(File(picked.path));
+      mediaProvider.setSelectedMediaType(isVideo ? 'video' : 'image');
+      mediaProvider.setSelectedVideoThumbnail(videoThumbnail);
       print('✅ Media selected and state updated');
     } catch (e) {
       if (!mounted) return;
