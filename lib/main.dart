@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:provider/provider.dart';
 import 'package:whatsapp_clone/screens/home_screen.dart';
 import 'package:whatsapp_clone/screens/login.dart';
 import 'package:whatsapp_clone/screens/register.dart';
@@ -9,6 +10,7 @@ import 'package:whatsapp_clone/chat/chat_service.dart';
 import 'package:whatsapp_clone/core/local_db_service.dart';
 import 'package:whatsapp_clone/core/notification_service.dart';
 import 'package:whatsapp_clone/core/app_theme.dart';
+import 'package:whatsapp_clone/providers/providers.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -39,17 +41,20 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'WhatsApp Username Clone',
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
-      home: const Root(),
-      routes: {
-        '/login': (_) => const LoginScreen(),
-        '/register': (_) => const RegisterScreen(),
-        '/home': (_) => const HomeScreen(),
-      },
+    return MultiProvider(
+      providers: getAppProviders(),
+      child: MaterialApp(
+        title: 'WhatsApp Username Clone',
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: ThemeMode.system,
+        home: const Root(),
+        routes: {
+          '/login': (_) => const LoginScreen(),
+          '/register': (_) => const RegisterScreen(),
+          '/home': (_) => const HomeScreen(),
+        },
+      ),
     );
   }
 }
