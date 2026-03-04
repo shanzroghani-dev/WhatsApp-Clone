@@ -46,7 +46,9 @@ class ChatHelpers {
 
   /// Checks if a date separator should be shown between messages
   static bool shouldShowDateSeparator(int currentTimestamp, int nextTimestamp) {
-    final currentDateTime = DateTime.fromMillisecondsSinceEpoch(currentTimestamp);
+    final currentDateTime = DateTime.fromMillisecondsSinceEpoch(
+      currentTimestamp,
+    );
     final nextDateTime = DateTime.fromMillisecondsSinceEpoch(nextTimestamp);
 
     final currentDate = DateTime(

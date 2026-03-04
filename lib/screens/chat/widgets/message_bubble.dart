@@ -43,7 +43,9 @@ class MessageBubble extends StatelessWidget {
     return Text(
       message.text,
       style: TextStyle(
-        color: mine ? Colors.white : (isDark ? AppColors.darkText : AppColors.lightText),
+        color: mine
+            ? Colors.white
+            : (isDark ? AppColors.darkText : AppColors.lightText),
         fontSize: 15,
         fontWeight: FontWeight.w500,
       ),
@@ -70,7 +72,9 @@ class MessageBubble extends StatelessWidget {
               errorBuilder: (_, __, ___) => _buildPlaceholder(isVideo),
             ),
           )
-        else if (isVideo && videoThumbnailPath != null && File(videoThumbnailPath).existsSync())
+        else if (isVideo &&
+            videoThumbnailPath != null &&
+            File(videoThumbnailPath).existsSync())
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: Stack(
@@ -122,7 +126,9 @@ class MessageBubble extends StatelessWidget {
     );
 
     return Column(
-      crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment: mine
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
       children: [
         InkWell(
           onTap: () => onMediaTap(attachment),
@@ -136,7 +142,11 @@ class MessageBubble extends StatelessWidget {
             Icon(
               isVideo ? Icons.movie_rounded : Icons.image_outlined,
               size: 14,
-              color: mine ? Colors.white70 : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+              color: mine
+                  ? Colors.white70
+                  : (isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary),
             ),
             const SizedBox(width: 4),
             Flexible(
@@ -145,7 +155,11 @@ class MessageBubble extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: mine ? Colors.white70 : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                  color: mine
+                      ? Colors.white70
+                      : (isDark
+                            ? AppColors.darkTextSecondary
+                            : AppColors.lightTextSecondary),
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
@@ -156,7 +170,11 @@ class MessageBubble extends StatelessWidget {
               Icon(
                 Icons.offline_pin_rounded,
                 size: 14,
-                color: mine ? Colors.white70 : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                color: mine
+                    ? Colors.white70
+                    : (isDark
+                          ? AppColors.darkTextSecondary
+                          : AppColors.lightTextSecondary),
               ),
             ],
           ],
@@ -179,7 +197,9 @@ class MessageBubble extends StatelessWidget {
       child: Icon(
         isVideo ? Icons.videocam_rounded : Icons.image_rounded,
         size: 36,
-        color: mine ? Colors.white : (isDark ? AppColors.darkText : AppColors.lightText),
+        color: mine
+            ? Colors.white
+            : (isDark ? AppColors.darkText : AppColors.lightText),
       ),
     );
   }

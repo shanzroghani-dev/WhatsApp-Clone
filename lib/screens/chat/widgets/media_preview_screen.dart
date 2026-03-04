@@ -77,11 +77,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
       body: Center(
         child: Padding(
@@ -105,118 +101,136 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                     Text(
                       'The media may have been deleted or is no longer available',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        color: isDark
+                            ? AppColors.darkTextSecondary
+                            : AppColors.lightTextSecondary,
                       ),
                       textAlign: TextAlign.center,
                     ),
                   ],
                 )
               : widget.isVideo
-                  ? !_isInitialized
-                      ? Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox(
-                              width: 40,
-                              height: 40,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                ),
+              ? !_isInitialized
+                    ? Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                isDark
+                                    ? AppColors.darkTextSecondary
+                                    : AppColors.lightTextSecondary,
                               ),
                             ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Loading video...',
-                              style: theme.textTheme.bodyMedium,
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        )
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            AspectRatio(
-                              aspectRatio: _videoController.value.aspectRatio,
-                              child: Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  VideoPlayer(_videoController),
-                                  GestureDetector(
-                                    onTap: _togglePlayPause,
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withValues(alpha: _isePlaying ? 0.3 : 0.5),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      padding: const EdgeInsets.all(12),
-                                      child: Icon(
-                                        _isePlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                        color: Colors.white,
-                                        size: 48,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            VideoProgressIndicator(
-                              _videoController,
-                              allowScrubbing: true,
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Loading video...',
+                            style: theme.textTheme.bodyMedium,
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      )
+                    : Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          AspectRatio(
+                            aspectRatio: _videoController.value.aspectRatio,
+                            child: Stack(
+                              alignment: Alignment.center,
                               children: [
-                                Text(
-                                  ChatHelpers.formatDuration(_videoController.value.position),
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '/',
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  ChatHelpers.formatDuration(_videoController.value.duration),
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                VideoPlayer(_videoController),
+                                GestureDetector(
+                                  onTap: _togglePlayPause,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(
+                                        alpha: _isePlaying ? 0.3 : 0.5,
+                                      ),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    padding: const EdgeInsets.all(12),
+                                    child: Icon(
+                                      _isePlaying
+                                          ? Icons.pause_rounded
+                                          : Icons.play_arrow_rounded,
+                                      color: Colors.white,
+                                      size: 48,
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
-                          ],
-                        )
-                  : ClipRRect(
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                      child: Image.file(
-                        file,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, error, __) => Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.broken_image_rounded,
-                              size: 72,
-                              color: Colors.red.shade400,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Could not display image',
-                              style: theme.textTheme.bodyMedium,
-                            ),
-                          ],
+                          ),
+                          const SizedBox(height: 16),
+                          VideoProgressIndicator(
+                            _videoController,
+                            allowScrubbing: true,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                ChatHelpers.formatDuration(
+                                  _videoController.value.position,
+                                ),
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: isDark
+                                      ? AppColors.darkTextSecondary
+                                      : AppColors.lightTextSecondary,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '/',
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: isDark
+                                      ? AppColors.darkTextSecondary
+                                      : AppColors.lightTextSecondary,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                ChatHelpers.formatDuration(
+                                  _videoController.value.duration,
+                                ),
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: isDark
+                                      ? AppColors.darkTextSecondary
+                                      : AppColors.lightTextSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      )
+              : ClipRRect(
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  child: Image.file(
+                    file,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, error, __) => Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.broken_image_rounded,
+                          size: 72,
+                          color: Colors.red.shade400,
                         ),
-                      ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Could not display image',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
                     ),
+                  ),
+                ),
         ),
       ),
     );

@@ -6,11 +6,7 @@ class ChatScreen extends StatefulWidget {
   final UserModel currentUser;
   final UserModel peer;
 
-  const ChatScreen({
-    super.key,
-    required this.currentUser,
-    required this.peer,
-  });
+  const ChatScreen({super.key, required this.currentUser, required this.peer});
 
   @override
   State<ChatScreen> createState() => ChatScreenState();

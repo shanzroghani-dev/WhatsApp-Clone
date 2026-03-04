@@ -45,6 +45,8 @@ class ChatService {
         return '📷 Photo';
       case 'video':
         return '🎥 Video';
+      case 'audio':
+        return '🎤 Voice message';
       default:
         return '📎 Attachment';
     }
@@ -119,9 +121,13 @@ class ChatService {
       throw Exception('Attachment exceeds 10MB limit');
     }
 
-    final sanitizedFileName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final sanitizedFileName = fileName.replaceAll(
+      RegExp(r'[^a-zA-Z0-9._-]'),
+      '_',
+    );
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final path = 'chat_attachments/$mediaType/$fromId/$toId/${timestamp}_$sanitizedFileName';
+    final path =
+        'chat_attachments/$mediaType/$fromId/$toId/${timestamp}_$sanitizedFileName';
 
     final ref = FirebaseStorage.instance.ref(path);
     await ref.putData(
@@ -156,6 +162,59 @@ class ChatService {
     );
   }
 
+  static Future<MessageModel> sendVoiceAttachment({
+    required String fromId,
+    required String toId,
+    required Uint8List bytes,
+    required String fileName,
+    required int durationMs,
+    String? caption,
+  }) async {
+    if (bytes.length > maxAttachmentBytes) {
+      throw Exception('Attachment exceeds 10MB limit');
+    }
+
+    final sanitizedFileName = fileName.replaceAll(
+      RegExp(r'[^a-zA-Z0-9._-]'),
+      '_',
+    );
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final path =
+        'chat_attachments/audio/$fromId/$toId/${timestamp}_$sanitizedFileName';
+
+    final ref = FirebaseStorage.instance.ref(path);
+    await ref.putData(
+      bytes,
+      SettableMetadata(
+        contentType: 'audio/mp4',
+        customMetadata: {
+          'fromId': fromId,
+          'toId': toId,
+          'mediaType': 'audio',
+          'durationMs': durationMs.toString(),
+        },
+      ),
+    );
+    final downloadUrl = await ref.getDownloadURL();
+
+    final payload = jsonEncode({
+      'type': 'audio',
+      'url': downloadUrl,
+      'name': sanitizedFileName,
+      'storagePath': path,
+      'sizeBytes': bytes.length,
+      'durationMs': durationMs,
+      if (caption != null && caption.isNotEmpty) 'caption': caption,
+    });
+
+    return sendMessage(
+      fromId: fromId,
+      toId: toId,
+      text: '$attachmentPrefix$payload',
+      chatListPreview: '🎤 Voice message',
+    );
+  }
+
   static Future<Uint8List> downloadAttachmentAndDeleteFromStorage(
     Map<String, dynamic> attachment, {
     bool deleteAfterDownload = false,
@@ -163,7 +222,8 @@ class ChatService {
     final url = attachment['url'] as String?;
     final storagePath = attachment['storagePath'] as String?;
 
-    if ((url == null || url.isEmpty) && (storagePath == null || storagePath.isEmpty)) {
+    if ((url == null || url.isEmpty) &&
+        (storagePath == null || storagePath.isEmpty)) {
       throw Exception('Attachment URL/path missing');
     }
 
@@ -196,26 +256,39 @@ class ChatService {
     String senderUid,
     String receiverUid,
   ) async* {
-    await for (final msg in FirebaseService.listenForIncomingMessages(receiverUid)) {
+    await for (final msg in FirebaseService.listenForIncomingMessages(
+      receiverUid,
+    )) {
       if (msg['senderUID'] != senderUid) continue;
 
       final remoteId = msg['id'] as String?;
-      if (remoteId != null && await LocalDBService.messageExistsByRemoteId(remoteId)) {
+      if (remoteId != null &&
+          await LocalDBService.messageExistsByRemoteId(remoteId)) {
         continue;
       }
 
       final cipher = msg['text'] as String?;
       final iv = msg['iv'] as String?;
-        final text = (cipher != null && iv != null)
-          ? (EncryptionService.decryptForUsers(cipher, iv, senderUid, receiverUid) ?? '[Message could not be decrypted]')
+      final text = (cipher != null && iv != null)
+          ? (EncryptionService.decryptForUsers(
+                  cipher,
+                  iv,
+                  senderUid,
+                  receiverUid,
+                ) ??
+                '[Message could not be decrypted]')
           : '[Message could not be decrypted]';
 
       final model = MessageModel(
-        id: (msg['localMessageId'] as String?) ?? (msg['id'] as String?) ?? const Uuid().v4(),
+        id:
+            (msg['localMessageId'] as String?) ??
+            (msg['id'] as String?) ??
+            const Uuid().v4(),
         fromId: senderUid,
         toId: receiverUid,
         text: text,
-        timestamp: (msg['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch,
+        timestamp:
+            (msg['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch,
         delivered: true,
       );
 
@@ -232,7 +305,10 @@ class ChatService {
     }
   }
 
-  static Future<void> markAsDelivered(String receiverUID, String messageId) async {
+  static Future<void> markAsDelivered(
+    String receiverUID,
+    String messageId,
+  ) async {
     await FirebaseService.markAsDelivered(receiverUID, messageId);
   }
 
@@ -247,7 +323,9 @@ class ChatService {
 
   static Future<void> cleanupOldMessages(String receiverUID) async {
     await LocalDBService.deleteOldLocalMessages();
-    final cutoff = DateTime.now().subtract(const Duration(hours: 24)).millisecondsSinceEpoch;
+    final cutoff = DateTime.now()
+        .subtract(const Duration(hours: 24))
+        .millisecondsSinceEpoch;
     await FirebaseService.deleteOldMessagesInCloud(receiverUID, cutoff);
   }
 
@@ -268,7 +346,9 @@ class ChatService {
           remoteId: remoteId,
         );
       } catch (_) {
-        await LocalDBService.incrementOutgoingRetry(item['localMessageId'] as String);
+        await LocalDBService.incrementOutgoingRetry(
+          item['localMessageId'] as String,
+        );
       }
     }
   }
@@ -278,24 +358,37 @@ class ChatService {
   }
 
   static Stream<MessageModel> streamIncomingForUser(String receiverUid) async* {
-    await for (final msg in FirebaseService.listenForIncomingMessages(receiverUid)) {
+    await for (final msg in FirebaseService.listenForIncomingMessages(
+      receiverUid,
+    )) {
       final senderUid = msg['senderUID'] as String?;
       if (senderUid == null || senderUid.isEmpty) continue;
 
       final remoteId = msg['id'] as String?;
-      if (remoteId != null && await LocalDBService.messageExistsByRemoteId(remoteId)) {
+      if (remoteId != null &&
+          await LocalDBService.messageExistsByRemoteId(remoteId)) {
         continue;
       }
 
       final cipher = msg['text'] as String?;
       final iv = msg['iv'] as String?;
-        final text = (cipher != null && iv != null)
-          ? (EncryptionService.decryptForUsers(cipher, iv, senderUid, receiverUid) ?? '[Message could not be decrypted]')
+      final text = (cipher != null && iv != null)
+          ? (EncryptionService.decryptForUsers(
+                  cipher,
+                  iv,
+                  senderUid,
+                  receiverUid,
+                ) ??
+                '[Message could not be decrypted]')
           : '[Message could not be decrypted]';
 
-      final timestamp = (msg['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch;
+      final timestamp =
+          (msg['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch;
       final model = MessageModel(
-        id: (msg['localMessageId'] as String?) ?? (msg['id'] as String?) ?? const Uuid().v4(),
+        id:
+            (msg['localMessageId'] as String?) ??
+            (msg['id'] as String?) ??
+            const Uuid().v4(),
         fromId: senderUid,
         toId: receiverUid,
         text: text,
@@ -303,7 +396,11 @@ class ChatService {
         delivered: true,
       );
 
-      await LocalDBService.saveMessageLocal(model, synced: true, remoteId: remoteId);
+      await LocalDBService.saveMessageLocal(
+        model,
+        synced: true,
+        remoteId: remoteId,
+      );
       await LocalDBService.upsertChatListEntry(
         ownerUID: receiverUid,
         peerUID: senderUid,
@@ -312,9 +409,13 @@ class ChatService {
       );
 
       try {
-        final senderProfile = await FirebaseService.getUserProfileMap(senderUid);
+        final senderProfile = await FirebaseService.getUserProfileMap(
+          senderUid,
+        );
         if (senderProfile != null) {
-          await LocalDBService.cacheUserProfile(UserModel.fromJson(senderProfile));
+          await LocalDBService.cacheUserProfile(
+            UserModel.fromJson(senderProfile),
+          );
         }
       } catch (_) {}
 
@@ -326,7 +427,9 @@ class ChatService {
     }
   }
 
-  static Future<List<Map<String, dynamic>>> getLocalChatList(String ownerUid) async {
+  static Future<List<Map<String, dynamic>>> getLocalChatList(
+    String ownerUid,
+  ) async {
     return LocalDBService.getChatListEntries(ownerUid);
   }
 
