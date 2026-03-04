@@ -70,43 +70,43 @@ class ChatScreenState extends State<ChatScreen>
   String get peerUserId => widget.peer.uid;
 
   @override
-  File? get selectedMediaFile => _selectedMediaFile;
+  File? get selectedMediaFile => mediaProvider.selectedMediaFile;
 
   @override
-  String? get selectedMediaType => _selectedMediaType;
+  String? get selectedMediaType => mediaProvider.selectedMediaType;
 
   @override
-  Uint8List? get selectedVideoThumbnail => _selectedVideoThumbnail;
+  Uint8List? get selectedVideoThumbnail => mediaProvider.selectedVideoThumbnail;
 
   @override
-  Set<String> get uploadingMessageIds => _uploadingMessageIds;
+  Set<String> get uploadingMessageIds => uploadProvider.uploadingMessageIds;
 
   @override
   ImagePicker get imagePicker => _imagePicker;
 
   @override
-  bool get isRecordingVoice => _isRecordingVoice;
+  bool get isRecordingVoice => recordingProvider.isRecording;
 
   @override
-  Duration get recordingDuration => _recordingDuration;
+  Duration get recordingDuration => recordingProvider.recordingDuration;
 
   @override
-  Timer? get recordingTimer => _recordingTimer;
+  Timer? get recordingTimer => recordingProvider.recordingTimer;
 
   @override
-  String? get playingAudioMessageId => _playingAudioMessageId;
+  String? get playingAudioMessageId => recordingProvider.playingAudioMessageId;
 
   @override
-  double get recordingSlideOffset => _recordingSlideOffset;
+  double get recordingSlideOffset => recordingProvider.slideOffset;
 
   @override
-  bool get recordingCancelTriggered => _recordingCancelTriggered;
+  bool get recordingCancelTriggered => recordingProvider.cancelTriggered;
 
   @override
-  Map<String, String> get cachedAttachmentPaths => _cachedAttachmentPaths;
+  Map<String, String> get cachedAttachmentPaths => uploadProvider.cachedAttachmentPaths;
 
   @override
-  Map<String, String> get videoThumbnailPaths => _videoThumbnailPaths;
+  Map<String, String> get videoThumbnailPaths => uploadProvider.videoThumbnailPaths;
 
   @override
   TextEditingController get messageController => _messageController;
@@ -487,7 +487,14 @@ class ChatScreenState extends State<ChatScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final visibleMessages = _visibleMessages();
+    
+    // Watch providers to rebuild when state changes
+    final messagesState = context.watch<MessagesStateNotifier>();
+    final recordingState = context.watch<RecordingStateNotifier>();
+    final mediaState = context.watch<MediaStateNotifier>();
+    
+    final visibleMessages = messagesState.visibleMessages;
+    
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
@@ -680,13 +687,13 @@ class ChatScreenState extends State<ChatScreen>
           ),
           ChatComposer(
             isDark: isDark,
-            isRecordingVoice: _isRecordingVoice,
-            recordingDuration: _recordingDuration,
-            recordingSlideOffset: _recordingSlideOffset,
+            isRecordingVoice: recordingState.isRecording,
+            recordingDuration: recordingState.recordingDuration,
+            recordingSlideOffset: recordingState.slideOffset,
             recordingWaveform: buildRecordingWaveform(isDark),
-            selectedMediaFile: _selectedMediaFile,
-            selectedMediaType: _selectedMediaType,
-            selectedVideoThumbnail: _selectedVideoThumbnail,
+            selectedMediaFile: mediaState.selectedMediaFile,
+            selectedMediaType: mediaState.selectedMediaType,
+            selectedVideoThumbnail: mediaState.selectedVideoThumbnail,
             messageController: _messageController,
             onAttachmentTap: showAttachmentOptions,
             onSendTap: _sendMessage,
