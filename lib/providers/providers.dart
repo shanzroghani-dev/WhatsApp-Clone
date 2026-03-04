@@ -7,8 +7,14 @@ import 'package:whatsapp_clone/providers/upload_provider.dart';
 /// Use this to wrap the MaterialApp in main.dart
 List<ChangeNotifierProvider> getAppProviders() {
   return [
-    ChangeNotifierProvider(create: (_) => RecordingStateNotifier()),
-    ChangeNotifierProvider(create: (_) => MediaStateNotifier()),
-    ChangeNotifierProvider(create: (_) => UploadStateNotifier()),
+    ChangeNotifierProvider<RecordingStateNotifier>(
+      create: (_) => RecordingStateNotifier(),
+    ),
+    ChangeNotifierProvider<MediaStateNotifier>(
+      create: (_) => MediaStateNotifier(),
+    ),
+    ChangeNotifierProvider<UploadStateNotifier>(
+      create: (_) => UploadStateNotifier(),
+    ),
   ];
 }

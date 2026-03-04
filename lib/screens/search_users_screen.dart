@@ -86,13 +86,37 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
     // Navigate to chat screen
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => ChangeNotifierProvider(
-          create: (_) => MessagesStateNotifier(),
-          child: ChatScreen(
-            currentUser: _currentUser!,
-            peer: _foundUser!,
-          ),
-        ),
+        builder: (routeContext) {
+          // Capture global providers from parent context
+          final recordingProvider =
+              Provider.of<RecordingStateNotifier>(context, listen: false);
+          final mediaProvider =
+              Provider.of<MediaStateNotifier>(context, listen: false);
+          final uploadProvider =
+              Provider.of<UploadStateNotifier>(context, listen: false);
+
+          // Create scoped Messages provider and pass global providers
+          return MultiProvider(
+            providers: [
+              ChangeNotifierProvider<RecordingStateNotifier>.value(
+                value: recordingProvider,
+              ),
+              ChangeNotifierProvider<MediaStateNotifier>.value(
+                value: mediaProvider,
+              ),
+              ChangeNotifierProvider<UploadStateNotifier>.value(
+                value: uploadProvider,
+              ),
+              ChangeNotifierProvider<MessagesStateNotifier>(
+                create: (_) => MessagesStateNotifier(),
+              ),
+            ],
+            child: ChatScreen(
+              currentUser: _currentUser!,
+              peer: _foundUser!,
+            ),
+          );
+        },
       ),
     );
   }

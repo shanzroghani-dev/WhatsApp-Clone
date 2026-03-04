@@ -129,16 +129,38 @@ class _ChatListScreenState extends State<ChatListScreen> {
     setState(() {
       _unreadCounts[peer.uid] = 0;
     });
-    Navigator.of(context)
-        .push(
-          MaterialPageRoute(
-            builder: (_) => ChangeNotifierProvider(
-              create: (_) => MessagesStateNotifier(),
-              child: ChatScreen(currentUser: _currentUser!, peer: peer),
-            ),
-          ),
-        )
-        .then((_) => _loadUsers());
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (routeContext) {
+          // Capture global providers from parent context
+          final recordingProvider =
+              Provider.of<RecordingStateNotifier>(context, listen: false);
+          final mediaProvider =
+              Provider.of<MediaStateNotifier>(context, listen: false);
+          final uploadProvider =
+              Provider.of<UploadStateNotifier>(context, listen: false);
+
+          // Create scoped Messages provider and pass global providers
+          return MultiProvider(
+            providers: [
+              ChangeNotifierProvider<RecordingStateNotifier>.value(
+                value: recordingProvider,
+              ),
+              ChangeNotifierProvider<MediaStateNotifier>.value(
+                value: mediaProvider,
+              ),
+              ChangeNotifierProvider<UploadStateNotifier>.value(
+                value: uploadProvider,
+              ),
+              ChangeNotifierProvider<MessagesStateNotifier>(
+                create: (_) => MessagesStateNotifier(),
+              ),
+            ],
+            child: ChatScreen(currentUser: _currentUser!, peer: peer),
+          );
+        },
+      ),
+    ).then((_) => _loadUsers());
   }
 
 
