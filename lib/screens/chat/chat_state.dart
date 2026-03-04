@@ -5,13 +5,11 @@ import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:provider/provider.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:whatsapp_clone/chat/chat_service.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
 import 'package:whatsapp_clone/models/message_model.dart';
-import 'package:whatsapp_clone/providers/messages_provider.dart';
 import 'package:whatsapp_clone/utils/date_time_utils.dart';
 import 'package:whatsapp_clone/screens/chat/chat_screen.dart';
 import 'package:whatsapp_clone/screens/chat/helpers/chat_helpers.dart';
@@ -114,10 +112,6 @@ class ChatScreenState extends State<ChatScreen>
   @override
   ScrollController get scrollController => _scrollController;
 
-  /// Provider accessor for messages
-  MessagesStateNotifier get messagesProvider =>
-      Provider.of<MessagesStateNotifier>(context, listen: false);
-
   @override
   void initState() {
     super.initState();
@@ -185,14 +179,18 @@ class ChatScreenState extends State<ChatScreen>
           if (newMessage.fromId == widget.peer.uid ||
               newMessage.toId == widget.peer.uid) {
             if (mounted) {
-              final existingIndex =
-                  messagesProvider.messages.indexWhere(
+              final existingIndex = _messages.indexWhere(
                 (m) => m.id == newMessage.id,
               );
               if (existingIndex != -1) {
-                messagesProvider.updateMessage(newMessage);
+                setState(() {
+                  _messages[existingIndex] = newMessage;
+                });
               } else {
-                messagesProvider.insertMessage(newMessage);
+                setState(() {
+                  _messages.insert(0, newMessage);
+                  _visibleCount = (_visibleCount + 1).clamp(0, _messages.length);
+                });
               }
             }
           }
@@ -225,8 +223,9 @@ class ChatScreenState extends State<ChatScreen>
       );
 
       if (mounted) {
-        messagesProvider.setMessages(messages);
         setState(() {
+          _messages = messages;
+          _visibleCount = messages.length.clamp(0, _pageSize);
           _hasMoreMessages = messages.length >= _pageSize;
         });
 
@@ -261,7 +260,10 @@ class ChatScreenState extends State<ChatScreen>
       delivered: false,
     );
 
-    messagesProvider.insertMessage(tempMessage);
+    setState(() {
+      _messages.insert(0, tempMessage);
+      _visibleCount = (_visibleCount + 1).clamp(0, _messages.length);
+    });
     _messageController.clear();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -289,11 +291,17 @@ class ChatScreenState extends State<ChatScreen>
       await _loadMessages(scrollToBottom: false);
 
       if (mounted) {
-        messagesProvider.removeMessage(tempMessageId);
+        setState(() {
+          _messages.removeWhere((m) => m.id == tempMessageId);
+          _visibleCount = (_visibleCount - 1).clamp(0, _messages.length);
+        });
       }
     } catch (e) {
       if (mounted) {
-        messagesProvider.removeMessage(tempMessageId);
+        setState(() {
+          _messages.removeWhere((m) => m.id == tempMessageId);
+          _visibleCount = (_visibleCount - 1).clamp(0, _messages.length);
+        });
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Failed to send message')));
@@ -302,7 +310,7 @@ class ChatScreenState extends State<ChatScreen>
   }
 
   List<MessageModel> _visibleMessages() {
-    return messagesProvider.visibleMessages;
+    return _messages.take(_visibleCount).toList();
   }
 
   bool _shouldShowDateSeparator(int index) {
