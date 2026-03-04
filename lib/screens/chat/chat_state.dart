@@ -5,11 +5,13 @@ import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:whatsapp_clone/chat/chat_service.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
 import 'package:whatsapp_clone/models/message_model.dart';
+import 'package:whatsapp_clone/providers/messages_provider.dart';
 import 'package:whatsapp_clone/utils/date_time_utils.dart';
 import 'package:whatsapp_clone/screens/chat/chat_screen.dart';
 import 'package:whatsapp_clone/screens/chat/helpers/chat_helpers.dart';
@@ -112,6 +114,10 @@ class ChatScreenState extends State<ChatScreen>
   @override
   ScrollController get scrollController => _scrollController;
 
+  /// Provider accessor for messages
+  MessagesStateNotifier get messagesProvider =>
+      Provider.of<MessagesStateNotifier>(context, listen: false);
+
   @override
   void initState() {
     super.initState();
@@ -179,20 +185,15 @@ class ChatScreenState extends State<ChatScreen>
           if (newMessage.fromId == widget.peer.uid ||
               newMessage.toId == widget.peer.uid) {
             if (mounted) {
-              setState(() {
-                final existingIndex = _messages.indexWhere(
-                  (m) => m.id == newMessage.id,
-                );
-                if (existingIndex != -1) {
-                  _messages[existingIndex] = newMessage;
-                } else {
-                  _messages.insert(0, newMessage);
-                  _visibleCount = (_visibleCount + 1).clamp(
-                    0,
-                    _messages.length,
-                  );
-                }
-              });
+              final existingIndex =
+                  messagesProvider.messages.indexWhere(
+                (m) => m.id == newMessage.id,
+              );
+              if (existingIndex != -1) {
+                messagesProvider.updateMessage(newMessage);
+              } else {
+                messagesProvider.insertMessage(newMessage);
+              }
             }
           }
         });
@@ -224,9 +225,8 @@ class ChatScreenState extends State<ChatScreen>
       );
 
       if (mounted) {
+        messagesProvider.setMessages(messages);
         setState(() {
-          _messages = messages;
-          _visibleCount = messages.length;
           _hasMoreMessages = messages.length >= _pageSize;
         });
 
@@ -261,11 +261,8 @@ class ChatScreenState extends State<ChatScreen>
       delivered: false,
     );
 
-    setState(() {
-      _messages.insert(0, tempMessage);
-      _visibleCount = (_visibleCount + 1).clamp(0, _messages.length);
-      _messageController.clear();
-    });
+    messagesProvider.insertMessage(tempMessage);
+    _messageController.clear();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -292,17 +289,11 @@ class ChatScreenState extends State<ChatScreen>
       await _loadMessages(scrollToBottom: false);
 
       if (mounted) {
-        setState(() {
-          _messages.removeWhere((m) => m.id == tempMessageId);
-          _visibleCount = (_visibleCount - 1).clamp(0, _messages.length);
-        });
+        messagesProvider.removeMessage(tempMessageId);
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _messages.removeWhere((m) => m.id == tempMessageId);
-          _visibleCount = (_visibleCount - 1).clamp(0, _messages.length);
-        });
+        messagesProvider.removeMessage(tempMessageId);
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Failed to send message')));
@@ -311,7 +302,7 @@ class ChatScreenState extends State<ChatScreen>
   }
 
   List<MessageModel> _visibleMessages() {
-    return _messages.take(_visibleCount).toList();
+    return messagesProvider.visibleMessages;
   }
 
   bool _shouldShowDateSeparator(int index) {
