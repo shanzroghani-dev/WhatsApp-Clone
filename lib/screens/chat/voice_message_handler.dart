@@ -3,9 +3,11 @@ import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:record/record.dart';
 import 'package:whatsapp_clone/chat/chat_service.dart';
 import 'package:whatsapp_clone/models/message_model.dart';
+import 'package:whatsapp_clone/providers/recording_provider.dart';
 
 /// Mixin for voice message handling
 mixin VoiceMessageHandler {
@@ -33,6 +35,10 @@ mixin VoiceMessageHandler {
   /// Getters for dependent state
   String get currentUserId;
   String get peerUserId;
+
+  /// Provider accessor
+  RecordingStateNotifier get recordingProvider =>
+      Provider.of<RecordingStateNotifier>(context, listen: false);
 
   /// State update method
   void setState(VoidCallback fn);
@@ -83,18 +89,18 @@ mixin VoiceMessageHandler {
       );
 
       recordingTimer?.cancel();
-      setRecordingTimer(
+      recordingProvider.setRecordingTimer(
         Timer.periodic(const Duration(seconds: 1), (_) {
           if (!mounted || !isRecordingVoice) return;
-          setRecordingDuration(
+          recordingProvider.setRecordingDuration(
             Duration(seconds: recordingDuration.inSeconds + 1),
           );
         }),
       );
 
       if (!mounted) return;
-      setIsRecordingVoice(true);
-      setRecordingDuration(Duration.zero);
+      recordingProvider.setIsRecording(true);
+      recordingProvider.setRecordingDuration(Duration.zero);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -132,10 +138,10 @@ mixin VoiceMessageHandler {
     final duration = recordingDuration;
 
     if (!mounted) return;
-    setIsRecordingVoice(false);
-    setRecordingDuration(Duration.zero);
-    setRecordingSlideOffset(0);
-    setRecordingCancelTriggered(false);
+    recordingProvider.setIsRecording(false);
+    recordingProvider.setRecordingDuration(Duration.zero);
+    recordingProvider.setRecordingSlideOffset(0);
+    recordingProvider.setRecordingCancelTriggered(false);
 
     if (path == null || duration.inSeconds <= 0) {
       return;
@@ -146,8 +152,8 @@ mixin VoiceMessageHandler {
 
   /// Long press start handler
   void onVoiceLongPressStart(LongPressStartDetails _) {
-    setRecordingCancelTriggered(false);
-    setRecordingSlideOffset(0);
+    recordingProvider.setRecordingCancelTriggered(false);
+    recordingProvider.setRecordingSlideOffset(0);
     unawaited(startVoiceRecording());
   }
 
@@ -157,11 +163,11 @@ mixin VoiceMessageHandler {
     final dx = details.offsetFromOrigin.dx;
     final clamped = dx < 0 ? dx.clamp(-140.0, 0.0) : 0.0;
     if (mounted) {
-      setRecordingSlideOffset(clamped);
+      recordingProvider.setRecordingSlideOffset(clamped);
     }
 
     if (dx <= -100) {
-      setRecordingCancelTriggered(true);
+      recordingProvider.setRecordingCancelTriggered(true);
       unawaited(cancelVoiceRecording());
     }
   }
@@ -217,7 +223,7 @@ mixin VoiceMessageHandler {
       if (playingAudioMessageId == message.id) {
         await audioPlayer.stop();
         if (!mounted) return;
-        setPlayingAudioMessageId(null);
+        recordingProvider.setPlayingAudioMessageId(null);
         return;
       }
 
@@ -231,7 +237,7 @@ mixin VoiceMessageHandler {
       await audioPlayer.stop();
       await audioPlayer.play(DeviceFileSource(localPath));
       if (!mounted) return;
-      setPlayingAudioMessageId(message.id);
+      recordingProvider.setPlayingAudioMessageId(message.id);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
