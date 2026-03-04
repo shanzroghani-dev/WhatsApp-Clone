@@ -143,7 +143,18 @@ class _ChatListScreenState extends State<ChatListScreen> {
           final uploadProvider =
               Provider.of<UploadStateNotifier>(context, listen: false);
 
-          // Create scoped Messages provider and pass global providers
+          // Get or create Messages provider for this chat conversation
+          final chatKey = MessagesProviderManager.getChatKey(
+            _currentUser!.uid,
+            peer.uid,
+          );
+          final messagesProvider = MessagesProviderManager().getProvider(
+            chatKey,
+            _currentUser!.uid,
+            peer.uid,
+          );
+
+          // Pass all providers to chat screen
           return MultiProvider(
             providers: [
               ChangeNotifierProvider<RecordingStateNotifier>.value(
@@ -155,8 +166,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
               ChangeNotifierProvider<UploadStateNotifier>.value(
                 value: uploadProvider,
               ),
-              ChangeNotifierProvider<MessagesStateNotifier>(
-                create: (_) => MessagesStateNotifier(),
+              ChangeNotifierProvider<MessagesStateNotifier>.value(
+                value: messagesProvider,
               ),
             ],
             child: ChatScreen(currentUser: _currentUser!, peer: peer),

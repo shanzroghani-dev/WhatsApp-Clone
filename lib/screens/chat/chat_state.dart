@@ -31,10 +31,8 @@ class ChatScreenState extends State<ChatScreen>
   final AudioRecorder _audioRecorder = AudioRecorder();
   final AudioPlayer _audioPlayer = AudioPlayer();
 
-  List<MessageModel> _messages = [];
   StreamSubscription<MessageModel>? _incomingSubscription;
   static const int _pageSize = 30;
-  int _visibleCount = 0;
   bool _isLoadingMore = false;
   bool _hasMoreMessages = false;
   final Set<String> _uploadingMessageIds = <String>{};
@@ -42,6 +40,13 @@ class ChatScreenState extends State<ChatScreen>
   final Map<String, String> _cachedAttachmentPaths = <String, String>{};
   final Map<String, String> _videoThumbnailPaths = <String, String>{};
   String? _attachmentCacheDirPath;
+  bool _isInitialized = false; // Track if didChangeDependencies has run
+
+  // Cached provider references (set in didChangeDependencies)
+  late RecordingStateNotifier _recordingProvider;
+  late MediaStateNotifier _mediaProvider;
+  late UploadStateNotifier _uploadProvider;
+  late MessagesStateNotifier _messagesProvider;
 
   // Getters for mixins
   @override
@@ -107,22 +112,38 @@ class ChatScreenState extends State<ChatScreen>
   @override
   ScrollController get scrollController => _scrollController;
 
-  /// Provider accessors
+  /// Provider accessors (return cached instances)
   @override
-  RecordingStateNotifier get recordingProvider =>
-      Provider.of<RecordingStateNotifier>(context, listen: false);
+  RecordingStateNotifier get recordingProvider => _recordingProvider;
 
   @override
-  MediaStateNotifier get mediaProvider =>
-      Provider.of<MediaStateNotifier>(context, listen: false);
+  MediaStateNotifier get mediaProvider => _mediaProvider;
 
   @override
-  UploadStateNotifier get uploadProvider =>
-      Provider.of<UploadStateNotifier>(context, listen: false);
+  UploadStateNotifier get uploadProvider => _uploadProvider;
 
   /// Scoped provider accessor for messages (per-chat instance)
-  MessagesStateNotifier get messagesProvider =>
-      Provider.of<MessagesStateNotifier>(context, listen: false);
+  MessagesStateNotifier get messagesProvider => _messagesProvider;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Cache provider references for safe access in dispose()
+    _recordingProvider = Provider.of<RecordingStateNotifier>(context, listen: false);
+    _mediaProvider = Provider.of<MediaStateNotifier>(context, listen: false);
+    _uploadProvider = Provider.of<UploadStateNotifier>(context, listen: false);
+    _messagesProvider = Provider.of<MessagesStateNotifier>(context, listen: false);
+    
+    // Only run initialization once
+    if (!_isInitialized) {
+      _isInitialized = true;
+      
+      // Load messages only if provider hasn't loaded from local DB yet
+      if (!messagesProvider.initialLoadComplete) {
+        _loadMessages(scrollToBottom: true);
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -131,10 +152,12 @@ class ChatScreenState extends State<ChatScreen>
     _messageController.addListener(_onComposerChanged);
     _audioPlayer.onPlayerComplete.listen((_) {
       if (!mounted) return;
-      recordingProvider.setPlayingAudioMessageId(null);
+      // Access provider safely - will be set before this callback fires
+      if (_isInitialized) {
+        recordingProvider.setPlayingAudioMessageId(null);
+      }
     });
     initializeAttachmentCacheDir();
-    _loadMessages(scrollToBottom: true);
     _subscribeToIncomingMessages();
   }
 
@@ -366,10 +389,9 @@ class ChatScreenState extends State<ChatScreen>
   @override
   void insertMessage(MessageModel message) {
     if (!mounted) return;
-    setState(() {
-      _messages.insert(0, message);
-      _visibleCount = (_visibleCount + 1).clamp(0, _messages.length);
-    });
+    messagesProvider.insertMessage(message);
+    // Force immediate rebuild for instant UI update
+    setState(() {});
   }
 
   @override
@@ -407,26 +429,19 @@ class ChatScreenState extends State<ChatScreen>
   @override
   void removeMessage(String id) {
     if (!mounted) return;
-    setState(() {
-      _messages.removeWhere((m) => m.id == id);
-      _visibleCount = (_visibleCount - 1).clamp(0, _messages.length);
-    });
+    messagesProvider.removeMessage(id);
   }
 
   @override
   void incrementVisibleCount() {
     if (!mounted) return;
-    setState(() {
-      _visibleCount = (_visibleCount + 1).clamp(0, _messages.length);
-    });
+    messagesProvider.incrementVisibleCount();
   }
 
   @override
   void decrementVisibleCount() {
     if (!mounted) return;
-    setState(() {
-      _visibleCount = (_visibleCount - 1).clamp(0, _messages.length);
-    });
+    messagesProvider.decrementVisibleCount();
   }
 
   /// Voice recording state setters
@@ -646,15 +661,7 @@ class ChatScreenState extends State<ChatScreen>
                                       ),
                                       if (mine) ...[
                                         const SizedBox(width: 4),
-                                        Icon(
-                                          message.delivered
-                                              ? Icons.done_all
-                                              : Icons.done,
-                                          size: 14,
-                                          color: message.delivered
-                                              ? Colors.white
-                                              : Colors.white70,
-                                        ),
+                                        _buildMessageStatusIcon(message),
                                       ],
                                     ],
                                   ),
@@ -687,6 +694,29 @@ class ChatScreenState extends State<ChatScreen>
           ),
         ],
       ),
+    );
+  }
+
+  /// Build message status icon (ticks)
+  /// - No icon: Message is pending/uploading (not sent yet)
+  /// - Single tick: Message sent but not delivered
+  /// - Double tick: Message delivered
+  Widget _buildMessageStatusIcon(MessageModel message) {
+    // Check if message is still pending/uploading
+    final isPending = uploadProvider.uploadingMessageIds.contains(message.id) ||
+        message.id.startsWith('temp_') ||
+        message.id.startsWith('uploading_');
+
+    if (isPending) {
+      // Don't show any tick for pending messages
+      return const SizedBox.shrink();
+    }
+
+    // Show double tick if delivered, single tick if sent but not delivered
+    return Icon(
+      message.delivered ? Icons.done_all : Icons.done,
+      size: 14,
+      color: message.delivered ? Colors.white : Colors.white70,
     );
   }
 }

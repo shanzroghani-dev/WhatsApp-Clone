@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -8,6 +9,7 @@ import 'package:record/record.dart';
 import 'package:whatsapp_clone/chat/chat_service.dart';
 import 'package:whatsapp_clone/models/message_model.dart';
 import 'package:whatsapp_clone/providers/recording_provider.dart';
+import 'package:whatsapp_clone/providers/upload_provider.dart';
 
 /// Mixin for voice message handling
 mixin VoiceMessageHandler {
@@ -36,9 +38,12 @@ mixin VoiceMessageHandler {
   String get currentUserId;
   String get peerUserId;
 
-  /// Provider accessor
+  /// Provider accessors
   RecordingStateNotifier get recordingProvider =>
       Provider.of<RecordingStateNotifier>(context, listen: false);
+
+  UploadStateNotifier get uploadProvider =>
+      Provider.of<UploadStateNotifier>(context, listen: false);
 
   /// State update method
   void setState(VoidCallback fn);
@@ -50,6 +55,14 @@ mixin VoiceMessageHandler {
   void setRecordingSlideOffset(double offset);
   void setRecordingCancelTriggered(bool value);
   void setPlayingAudioMessageId(String? id);
+
+  /// Message management methods (implemented by host class)
+  void insertMessage(MessageModel message);
+  void removeMessage(String id);
+  void updateCachedAttachmentPath(String key, String path);
+  void removeCachedAttachmentPath(String key);
+  Future<void> loadMessages({bool scrollToBottom});
+  ScrollController get scrollController;
 
   /// Helper methods
   String formatRecordingDuration(Duration duration) {
@@ -187,12 +200,83 @@ mixin VoiceMessageHandler {
     final file = File(filePath);
     if (!await file.exists()) return;
 
+    final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    final tempMessageId = 'uploading_${DateTime.now().millisecondsSinceEpoch}';
+
+    try {
+      // Create temporary message payload
+      final tempPayload = jsonEncode({
+        'type': 'audio',
+        'url': '',
+        'name': fileName,
+        'storagePath': '',
+        'sizeBytes': await file.length(),
+        'durationMs': duration.inMilliseconds,
+      });
+
+      // Create temporary message to show immediately
+      final tempMessage = MessageModel(
+        id: tempMessageId,
+        fromId: currentUserId,
+        toId: peerUserId,
+        text: '${ChatService.attachmentPrefix}$tempPayload',
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+        delivered: false,
+      );
+
+      // Add to uploading set and insert message
+      uploadProvider.addUploadingMessageId(tempMessageId);
+      insertMessage(tempMessage);
+      updateCachedAttachmentPath(tempMessageId, filePath);
+
+      // Scroll to show new message
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (scrollController.hasClients) {
+          scrollController.jumpTo(0);
+        }
+      });
+
+      // Send in background
+      unawaited(_sendVoiceInBackground(
+        file: file,
+        fileName: fileName,
+        duration: duration,
+        tempMessageId: tempMessageId,
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      uploadProvider.removeUploadingMessageId(tempMessageId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to send voice message')),
+      );
+    }
+  }
+
+  /// Send voice message in background
+  Future<void> _sendVoiceInBackground({
+    required File file,
+    required String fileName,
+    required Duration duration,
+    required String tempMessageId,
+  }) async {
     try {
       final bytes = await file.readAsBytes();
-      final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+      // Cache the file
+      if (attachmentCacheDirPath != null) {
+        final cachePath = '$attachmentCacheDirPath/${tempMessageId}_$fileName';
+        final cacheFile = File(cachePath);
+        await cacheFile.writeAsBytes(bytes, flush: true);
+        if (mounted) {
+          updateCachedAttachmentPath(tempMessageId, cachePath);
+        }
+      }
+
+      // Delete original recording file
       await file.delete();
 
-      final message = await ChatService.sendVoiceAttachment(
+      // Upload
+      final realMessage = await ChatService.sendVoiceAttachment(
         fromId: currentUserId,
         toId: peerUserId,
         bytes: bytes,
@@ -200,14 +284,30 @@ mixin VoiceMessageHandler {
         durationMs: duration.inMilliseconds,
       );
 
-      // Reload messages to get the real message
-      // Note: This is called from the parent class
-      // For now, just ensure the message was sent
-      if (message.id.isEmpty) {
+      if (realMessage.id.isEmpty) {
         throw Exception('Failed to send voice message');
       }
-    } catch (_) {
+
+      // Reload messages to replace temp with real message
+      await loadMessages(scrollToBottom: false);
+
+      // Remove the temporary message now that real message is loaded
+      if (mounted) {
+        removeMessage(tempMessageId);
+      }
+
+      // Update cache path to use real message ID
+      if (mounted) {
+        uploadProvider.removeUploadingMessageId(tempMessageId);
+        if (uploadProvider.cachedAttachmentPaths.containsKey(tempMessageId)) {
+          final tempPath = uploadProvider.cachedAttachmentPaths[tempMessageId]!;
+          uploadProvider.updateCachedAttachmentPath(realMessage.id, tempPath);
+          uploadProvider.removeCachedAttachmentPath(tempMessageId);
+        }
+      }
+    } catch (e) {
       if (!mounted) return;
+      uploadProvider.removeUploadingMessageId(tempMessageId);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to send voice message')),
       );

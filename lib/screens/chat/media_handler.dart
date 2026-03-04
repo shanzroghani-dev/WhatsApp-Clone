@@ -106,7 +106,7 @@ mixin MediaHandler {
         toId: peerUserId,
         text: '${ChatService.attachmentPrefix}${jsonEncode(tempPayload)}',
         timestamp: DateTime.now().millisecondsSinceEpoch,
-        delivered: true,
+        delivered: false, // Not delivered yet
       );
 
       String? previewPath = file.path;
@@ -123,7 +123,6 @@ mixin MediaHandler {
 
       uploadProvider.addUploadingMessageId(tempMessageId);
       insertMessage(tempMessage);
-      incrementVisibleCount();
       uploadProvider.updateCachedAttachmentPath(tempMessageId, previewPath);
       mediaProvider.clear();
       messageController.clear();
@@ -202,6 +201,11 @@ mixin MediaHandler {
 
       // Load updated messages to replace temp with real message
       await loadMessages(scrollToBottom: false);
+
+      // Remove the temporary message now that real message is loaded
+      if (mounted) {
+        removeMessage(tempMessageId);
+      }
 
       // Rename thumbnail file to match real message ID
       if (videoThumbnailPaths.containsKey(tempMessageId)) {
