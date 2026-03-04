@@ -1,7 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:whatsapp_clone/screens/chat_list.dart';
+import 'package:whatsapp_clone/screens/home_screen.dart';
 import 'package:whatsapp_clone/screens/login.dart';
 import 'package:whatsapp_clone/screens/register.dart';
 import 'package:whatsapp_clone/auth/auth_service.dart';
@@ -48,7 +48,7 @@ class MyApp extends StatelessWidget {
       routes: {
         '/login': (_) => const LoginScreen(),
         '/register': (_) => const RegisterScreen(),
-        '/chats': (_) => const ChatListScreen(),
+        '/home': (_) => const HomeScreen(),
       },
     );
   }
@@ -78,7 +78,7 @@ class _RootState extends State<Root> {
       
       if (user != null) {
         if (mounted) {
-          Navigator.of(context).pushReplacementNamed('/chats');
+          Navigator.of(context).pushReplacementNamed('/home');
         }
       } else {
         if (mounted) {

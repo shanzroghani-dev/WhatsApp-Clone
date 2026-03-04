@@ -214,6 +214,19 @@ class LocalDBService {
     );
   }
 
+  static Future<bool> messageExistsByRemoteId(String remoteId) async {
+    if (remoteId.trim().isEmpty) return false;
+    final db = await _database;
+    final rows = await db.query(
+      AppConstants.localMessagesTable,
+      columns: ['id'],
+      where: 'remoteId = ?',
+      whereArgs: [remoteId],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
   static Future<void> queueOutgoingMessage({
     required String localMessageId,
     required String senderUID,

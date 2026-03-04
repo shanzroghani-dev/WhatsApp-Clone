@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:whatsapp_clone/auth/auth_service.dart';
 import 'package:whatsapp_clone/core/profile_service.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
@@ -6,7 +7,7 @@ import 'package:whatsapp_clone/screens/profile_edit_screen.dart';
 import 'package:whatsapp_clone/widgets/profile_avatar.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
 
-/// Profile screen with tabs for Profile Info and Settings
+/// Profile screen with Profile Info and Settings combined in one page
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -14,23 +15,14 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _ProfileScreenState extends State<ProfileScreen> {
   UserModel? _currentUser;
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _loadProfile();
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
   }
 
   Future<void> _loadProfile() async {
@@ -54,19 +46,59 @@ class _ProfileScreenState extends State<ProfileScreen>
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              decoration: BoxDecoration(
+                color: AppColors.error.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(AppRadius.xs),
+              ),
+              child: Icon(
+                Icons.logout_rounded,
+                color: AppColors.error,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text('Logout'),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to logout? You\'ll need to sign in again to access your chats.',
+          style: TextStyle(fontSize: 14),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
+            child: Text(
+              'Cancel',
+              style: TextStyle(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? AppColors.darkText
+                    : AppColors.lightText,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            child: const Text('Logout'),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.error,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text(
+                'Logout',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -95,6 +127,39 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
   }
 
+  void _showComingSoon() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Coming soon')),
+    );
+  }
+
+  void _showThemeInfo() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Theme follows system settings')),
+    );
+  }
+
+  void _showAbout() {
+    showAboutDialog(
+      context: context,
+      applicationName: 'WhatsApp Clone',
+      applicationVersion: '1.0.0',
+      applicationIcon: const Icon(Icons.chat_bubble, size: 48),
+    );
+  }
+
+  void _copyToClipboard(String text, String label) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$label copied to clipboard'),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -102,38 +167,61 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profile'),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: colorScheme.primary,
-          labelColor: colorScheme.primary,
-          unselectedLabelColor: theme.textTheme.bodySmall?.color,
-          tabs: const [
-            Tab(text: 'Profile', icon: Icon(Icons.person)),
-            Tab(text: 'Settings', icon: Icon(Icons.settings)),
-          ],
-        ),
+        title: const Text('Profile', style: TextStyle(fontWeight: FontWeight.w600)),
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code_rounded),
+            tooltip: 'QR Code',
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('QR Code feature coming soon'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.share_rounded),
+            tooltip: 'Share Profile',
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Share profile feature coming soon'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildProfileTab(theme, colorScheme),
-                _buildSettingsTab(theme, colorScheme),
-              ],
+          : RefreshIndicator(
+              onRefresh: _loadProfile,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Column(
+                  children: [
+                    _buildProfileSection(theme, colorScheme),
+                    const SizedBox(height: AppSpacing.xxxl),
+                    _buildSettingsSection(theme, colorScheme),
+                  ],
+                ),
+              ),
             ),
     );
   }
 
-  Widget _buildProfileTab(ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildProfileSection(ThemeData theme, ColorScheme colorScheme) {
     if (_currentUser == null) {
       return const Center(child: Text('No user data available'));
     }
 
     final isDark = theme.brightness == Brightness.dark;
 
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.all(AppSpacing.lg),
       child: Column(
         children: [
@@ -218,9 +306,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                     ),
                   ],
                 ),
-
                 const SizedBox(height: AppSpacing.xl),
-
                 // Display Name
                 Text(
                   _currentUser!.displayName,
@@ -231,9 +317,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ),
                   textAlign: TextAlign.center,
                 ),
-
                 const SizedBox(height: AppSpacing.sm),
-
                 // Unique Number Badge
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -261,9 +345,7 @@ class _ProfileScreenState extends State<ProfileScreen>
               ],
             ),
           ),
-
           const SizedBox(height: AppSpacing.xl),
-
           // Status Card
           if (_currentUser!.status.isNotEmpty)
             Container(
@@ -305,9 +387,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                 ],
               ),
             ),
-
           const SizedBox(height: AppSpacing.lg),
-
           // Account Information Card
           Container(
             decoration: BoxDecoration(
@@ -327,6 +407,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                   subtitle: _currentUser!.email,
                   isDark: isDark,
                   showDivider: true,
+                  onTap: () => _copyToClipboard(_currentUser!.email, 'Email'),
                 ),
                 _buildInfoTile(
                   icon: Icons.tag,
@@ -334,6 +415,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                   subtitle: _currentUser!.uniqueNumber,
                   isDark: isDark,
                   showDivider: true,
+                  onTap: () => _copyToClipboard(_currentUser!.uniqueNumber, 'Chat Number'),
                 ),
                 _buildInfoTile(
                   icon: Icons.calendar_today_outlined,
@@ -354,10 +436,8 @@ class _ProfileScreenState extends State<ProfileScreen>
               ],
             ),
           ),
-
-          const SizedBox(height: AppSpacing.xxxl),
-
-          // Edit Profile Button with Gradient
+          const SizedBox(height: AppSpacing.xl),
+          // Edit Profile Button
           Container(
             width: double.infinity,
             height: 56,
@@ -388,8 +468,272 @@ class _ProfileScreenState extends State<ProfileScreen>
               ),
             ),
           ),
-          
           const SizedBox(height: AppSpacing.xl),
+          
+          // Quick Actions Row
+          Row(
+            children: [
+              Expanded(
+                child: _buildQuickAction(
+                  icon: Icons.qr_code_rounded,
+                  label: 'QR Code',
+                  isDark: isDark,
+                  onTap: () => _showComingSoon(),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: _buildQuickAction(
+                  icon: Icons.share_rounded,
+                  label: 'Share',
+                  isDark: isDark,
+                  onTap: () => _showComingSoon(),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: _buildQuickAction(
+                  icon: Icons.star_rounded,
+                  label: 'Starred',
+                  isDark: isDark,
+                  onTap: () => _showComingSoon(),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickAction({
+    required IconData icon,
+    required String label,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(
+            color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+            width: 1,
+          ),
+          boxShadow: [AppShadows.card],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              decoration: BoxDecoration(
+                gradient: AppColors.primaryGradient,
+                borderRadius: BorderRadius.circular(AppRadius.xs),
+              ),
+              child: Icon(
+                icon,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isDark ? AppColors.darkText : AppColors.lightText,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsSection(ThemeData theme, ColorScheme colorScheme) {
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Account Settings
+          Text(
+            'Account',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Container(
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              boxShadow: [AppShadows.card],
+              border: Border.all(
+                color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              children: [
+                _buildSettingsTile(
+                  icon: Icons.privacy_tip,
+                  title: 'Privacy',
+                  subtitle: 'Control your privacy settings',
+                  isDark: isDark,
+                  onTap: _showComingSoon,
+                  showDivider: true,
+                ),
+                _buildSettingsTile(
+                  icon: Icons.security,
+                  title: 'Security',
+                  subtitle: 'Manage your account security',
+                  isDark: isDark,
+                  onTap: _showComingSoon,
+                  showDivider: true,
+                ),
+                _buildSettingsTile(
+                  icon: Icons.notifications,
+                  title: 'Notifications',
+                  subtitle: 'Notification preferences',
+                  isDark: isDark,
+                  onTap: _showComingSoon,
+                  showDivider: false,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          // App Settings
+          Text(
+            'App',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Container(
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              boxShadow: [AppShadows.card],
+              border: Border.all(
+                color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              children: [
+                _buildSettingsTile(
+                  icon: Icons.palette,
+                  title: 'Theme',
+                  subtitle: Theme.of(context).brightness == Brightness.dark ? 'Dark Mode' : 'Light Mode',
+                  isDark: isDark,
+                  onTap: _showThemeInfo,
+                  showDivider: true,
+                ),
+                _buildSettingsTile(
+                  icon: Icons.storage,
+                  title: 'Storage',
+                  subtitle: 'Manage app storage',
+                  isDark: isDark,
+                  onTap: _showComingSoon,
+                  showDivider: false,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          // About
+          Text(
+            'About',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Container(
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              boxShadow: [AppShadows.card],
+              border: Border.all(
+                color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              children: [
+                _buildSettingsTile(
+                  icon: Icons.info,
+                  title: 'About',
+                  subtitle: 'Version 1.0.0',
+                  isDark: isDark,
+                  onTap: _showAbout,
+                  showDivider: true,
+                ),
+                _buildSettingsTile(
+                  icon: Icons.help,
+                  title: 'Help & Support',
+                  subtitle: 'Get help and support',
+                  isDark: isDark,
+                  onTap: _showComingSoon,
+                  showDivider: false,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          // Logout Button
+          Container(
+            width: double.infinity,
+            height: 56,
+            decoration: BoxDecoration(
+              color: AppColors.error,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.error.withOpacity(0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: ElevatedButton.icon(
+              onPressed: _logout,
+              icon: const Icon(Icons.logout, color: Colors.white),
+              label: const Text(
+                'Logout',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xxxl),
         ],
       ),
     );
@@ -401,56 +745,72 @@ class _ProfileScreenState extends State<ProfileScreen>
     required String subtitle,
     required bool isDark,
     required bool showDivider,
+    VoidCallback? onTap,
   }) {
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(AppRadius.xs),
+            ),
+            child: Icon(
+              icon,
+              size: 20,
+              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.lg),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: isDark ? AppColors.darkText : AppColors.lightText,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (onTap != null)
+            Icon(
+              Icons.copy_rounded,
+              size: 16,
+              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+            ),
+        ],
+      ),
+    );
+
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.md,
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.sm),
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(AppRadius.xs),
-                ),
-                child: Icon(
-                  icon,
-                  size: 20,
-                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.lg),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: isDark ? AppColors.darkText : AppColors.lightText,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+        if (onTap != null)
+          InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(AppRadius.xs),
+            child: content,
+          )
+        else
+          content,
         if (showDivider)
           Divider(
             height: 1,
@@ -461,170 +821,58 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Widget _buildSettingsTab(ThemeData theme, ColorScheme colorScheme) {
-    return ListView(
+  Widget _buildSettingsTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool isDark,
+    required VoidCallback onTap,
+    required bool showDivider,
+  }) {
+    return Column(
       children: [
-        const SizedBox(height: AppSpacing.lg),
-        
-        // Account Settings
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-          child: Text(
-            'Account',
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: colorScheme.primary,
-              fontWeight: FontWeight.bold,
+        ListTile(
+          leading: Container(
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(AppRadius.xs),
+            ),
+            child: Icon(
+              icon,
+              size: 20,
+              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
             ),
           ),
-        ),
-        Card(
-          margin: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.privacy_tip),
-                title: const Text('Privacy'),
-                subtitle: const Text('Control your privacy settings'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Coming soon')),
-                  );
-                },
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.security),
-                title: const Text('Security'),
-                subtitle: const Text('Manage your account security'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Coming soon')),
-                  );
-                },
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.notifications),
-                title: const Text('Notifications'),
-                subtitle: const Text('Notification preferences'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Coming soon')),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-
-        // App Settings
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-          child: Text(
-            'App',
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: colorScheme.primary,
-              fontWeight: FontWeight.bold,
+          title: Text(
+            title,
+            style: TextStyle(
+              color: isDark ? AppColors.darkText : AppColors.lightText,
+              fontWeight: FontWeight.w600,
+              fontSize: 15,
             ),
           ),
-        ),
-        Card(
-          margin: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.palette),
-                title: const Text('Theme'),
-                subtitle: Text(
-                  theme.brightness == Brightness.dark ? 'Dark Mode' : 'Light Mode',
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Theme follows system settings')),
-                  );
-                },
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.storage),
-                title: const Text('Storage'),
-                subtitle: const Text('Manage app storage'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Coming soon')),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-
-        // About
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-          child: Text(
-            'About',
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: colorScheme.primary,
-              fontWeight: FontWeight.bold,
+          subtitle: Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
             ),
           ),
-        ),
-        Card(
-          margin: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.info),
-                title: const Text('About'),
-                subtitle: const Text('Version 1.0.0'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  showAboutDialog(
-                    context: context,
-                    applicationName: 'WhatsApp Clone',
-                    applicationVersion: '1.0.0',
-                    applicationIcon: const Icon(Icons.chat_bubble, size: 48),
-                  );
-                },
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.help),
-                title: const Text('Help & Support'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Coming soon')),
-                  );
-                },
-              ),
-            ],
+          trailing: Icon(
+            Icons.chevron_right,
+            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
           ),
+          onTap: onTap,
         ),
-
-        const SizedBox(height: AppSpacing.xl),
-
-        // Logout Button
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-          child: ElevatedButton.icon(
-            onPressed: _logout,
-            icon: const Icon(Icons.logout),
-            label: const Text('Logout'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-              foregroundColor: Colors.white,
-            ),
+        if (showDivider)
+          Divider(
+            height: 1,
+            thickness: 1,
+            color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+            indent: 16,
+            endIndent: 16,
           ),
-        ),
-
-        const SizedBox(height: AppSpacing.xxxl),
       ],
     );
   }

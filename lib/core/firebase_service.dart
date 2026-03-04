@@ -304,6 +304,8 @@ class FirebaseService {
   static Stream<Map<String, dynamic>> listenForIncomingMessages(String receiverUID) {
     return _realtimeDb
         .ref('${AppConstants.messagesPath}/$receiverUID')
+        .orderByChild('delivered')
+        .equalTo(false)
         .onChildAdded
         .map((event) {
       final value = event.snapshot.value;

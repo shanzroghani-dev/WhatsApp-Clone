@@ -5,9 +5,8 @@ import 'package:whatsapp_clone/auth/auth_service.dart';
 import 'package:whatsapp_clone/chat/chat_service.dart';
 import 'package:whatsapp_clone/core/profile_service.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
-import 'package:whatsapp_clone/screens/chat_screen.dart';
+import 'package:whatsapp_clone/screens/chat/chat_screen.dart';
 import 'package:whatsapp_clone/screens/search_users_screen.dart';
-import 'package:whatsapp_clone/screens/profile_screen.dart';
 import 'package:whatsapp_clone/widgets/profile_avatar.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
 
@@ -22,6 +21,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
   UserModel? _currentUser;
   List<UserModel> _users = [];
   final Map<String, String> _lastMessageByUid = {};
+  final Map<String, int> _unreadCounts = {};
+  final Map<String, DateTime> _lastMessageTimeByUid = {};
   StreamSubscription? _incomingSub;
   bool _loading = true;
 
@@ -37,6 +38,25 @@ class _ChatListScreenState extends State<ChatListScreen> {
     _incomingSub?.cancel();
     _updateOnlineStatus(false);
     super.dispose();
+  }
+
+  String _formatMessageTime(DateTime? time) {
+    if (time == null) return '';
+    final now = DateTime.now();
+    final difference = now.difference(time);
+
+    if (difference.inMinutes < 1) return 'Now';
+    if (difference.inMinutes < 60) return '${difference.inMinutes}m';
+    if (difference.inHours < 24) return '${difference.inHours}h';
+    if (difference.inDays == 1) return 'Yesterday';
+    if (difference.inDays < 7) return '${difference.inDays}d';
+
+    return '${time.day}/${time.month}';
+  }
+
+  String _truncateMessage(String message, int maxLength) {
+    if (message.length <= maxLength) return message;
+    return '${message.substring(0, maxLength)}..';
   }
 
   Future<void> _updateOnlineStatus(bool isOnline) async {
@@ -56,8 +76,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
         return;
       }
 
-      _incomingSub ??= ChatService.streamIncomingForUser(me.uid).listen((_) {
+      _incomingSub ??= ChatService.streamIncomingForUser(me.uid).listen((message) {
         if (mounted) {
+          // Increment unread count for this sender
+          setState(() {
+            final senderUid = message.fromId;
+            _unreadCounts[senderUid] = (_unreadCounts[senderUid] ?? 0) + 1;
+          });
+          // Refresh to update last message
           _loadUsers();
         }
       });
@@ -82,6 +108,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
         users.add(peer);
         _lastMessageByUid[peerUid] = (entry['lastMessage'] as String?) ?? '';
+        _lastMessageTimeByUid[peerUid] = DateTime.now();
       }
 
       setState(() {
@@ -94,38 +121,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
     }
   }
 
-  Future<void> _logout() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-            ),
-            child: const Text('Logout'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true && mounted) {
-      await _updateOnlineStatus(false);
-      await AuthService.logoutUser();
-      if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed('/login');
-    }
-  }
-
   void _openChat(UserModel peer) {
     if (_currentUser == null) return;
+    // Clear unread count when opening chat
+    setState(() {
+      _unreadCounts[peer.uid] = 0;
+    });
     Navigator.of(context)
         .push(
           MaterialPageRoute(
@@ -135,18 +136,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
         .then((_) => _loadUsers());
   }
 
-  Future<void> _openProfile() async {
-    final result = await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const ProfileScreen(),
-      ),
-    );
 
-    // Reload users if profile was updated
-    if (result == true) {
-      _loadUsers();
-    }
-  }
 
   void _openSearch() {
     Navigator.of(context).push(
@@ -164,48 +154,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chats'),
-        actions: [
-          IconButton(
-            onPressed: _openSearch,
-            icon: const Icon(Icons.search),
-            tooltip: 'Search Users',
-          ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            onSelected: (value) {
-              switch (value) {
-                case 'profile':
-                  _openProfile();
-                  break;
-                case 'logout':
-                  _logout();
-                  break;
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'profile',
-                child: Row(
-                  children: [
-                   Icon(Icons.person),
-                    SizedBox(width: 12),
-                    Text('Profile'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'logout',
-                child: Row(
-                  children: [
-                    Icon(Icons.logout),
-                    SizedBox(width: 12),
-                    Text('Logout'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
+    
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -373,6 +322,16 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                                 overflow: TextOverflow.ellipsis,
                                               ),
                                             ),
+                                            SizedBox(width: AppSpacing.sm.toDouble()),
+                                            Text(
+                                              _formatMessageTime(_lastMessageTimeByUid[user.uid]),
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                              ),
+                                            ),
+                                            if (user.isOnline)
+                                              SizedBox(width: AppSpacing.sm.toDouble()),
                                             if (user.isOnline)
                                               Container(
                                                 padding: const EdgeInsets.symmetric(
@@ -397,7 +356,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                         const SizedBox(height: 4),
                                         Text(
                                           lastMessage.isNotEmpty
-                                              ? lastMessage
+                                              ? _truncateMessage(lastMessage, 40)
                                               : (user.status.isNotEmpty 
                                                   ? user.status 
                                                   : '@${user.uniqueNumber}'),
@@ -405,7 +364,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
                                             color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                            fontSize: 14,
+                                            fontSize: 13,
+                                            fontWeight: (_unreadCounts[user.uid] ?? 0) > 0 ? FontWeight.w600 : FontWeight.w400,
                                           ),
                                         ),
                                       ],
@@ -414,20 +374,40 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                   
                                   const SizedBox(width: AppSpacing.sm),
                                   
-                                  // Arrow Icon
-                                  Container(
-                                    width: 32,
-                                    height: 32,
-                                    decoration: BoxDecoration(
-                                      gradient: AppColors.primaryGradient,
-                                      shape: BoxShape.circle,
+                                  // Unread Badge or Arrow Icon
+                                  if ((_unreadCounts[user.uid] ?? 0) > 0)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: AppSpacing.sm,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        gradient: AppColors.primaryGradient,
+                                        borderRadius: BorderRadius.circular(AppRadius.xs),
+                                      ),
+                                      child: Text(
+                                        _unreadCounts[user.uid].toString(),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    )
+                                  else
+                                    Container(
+                                      width: 32,
+                                      height: 32,
+                                      decoration: BoxDecoration(
+                                        gradient: AppColors.primaryGradient,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.arrow_forward_ios,
+                                        size: 14,
+                                        color: Colors.white,
+                                      ),
                                     ),
-                                    child: const Icon(
-                                      Icons.arrow_forward_ios,
-                                      size: 14,
-                                      color: Colors.white,
-                                    ),
-                                  ),
                                 ],
                               ),
                             ),
