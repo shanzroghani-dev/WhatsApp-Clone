@@ -2,33 +2,40 @@
 
 This document explains the new provider-based state management and how to migrate features step by step.
 
-### Current State (✅ MIGRATION COMPLETE - 3 Phases)
+### Current State (✅ MIGRATION COMPLETE - Option 2: Scoped Providers)
 
 **Providers Created & Active:**
-1. `RecordingStateNotifier` - Voice recording & playback state (global UI state)
-2. `MediaStateNotifier` - Media file selection state (global UI state)
-3. `UploadStateNotifier` - Upload progress & caching (global UI state)
+1. `RecordingStateNotifier` - Voice recording & playback state (global)
+2. `MediaStateNotifier` - Media file selection state (global)
+3. `UploadStateNotifier` - Upload progress & caching (global)
+4. `MessagesStateNotifier` - Messages list, visibility, updates (scoped per-chat)
 
 **Application Setup:**
-- App wrapped with `MultiProvider` in `main.dart`
-- 3 providers initialized and active
-- All mixins using providers for shared UI state
+- App wrapped with `MultiProvider` in `main.dart` (3 global providers)
+- Each ChatScreen wrapped with its own `ChangeNotifierProvider<MessagesStateNotifier>`
+- All mixins using providers appropriately
 - 0 compilation errors
 
+**Architecture Pattern:**
+- ✅ **Global Providers**: Recording, Media, Upload (shared UI state)
+- ✅ **Scoped Providers**: Messages (per-chat instance)
+- ✅ Each chat conversation has its own independent MessagesStateNotifier
+- ✅ No state pollution between different chat screens
+
 **Migration Complete:**
-- ✅ VoiceMessageHandler → RecordingStateNotifier
-- ✅ MediaHandler → MediaStateNotifier + UploadStateNotifier
-- ❌ ChatScreenState → Messages kept as local state (see Phase 4 note)
-- ✅ All shared UI state provider-managed
+- ✅ VoiceMessageHandler → RecordingStateNotifier (global)
+- ✅ MediaHandler → MediaStateNotifier + UploadStateNotifier (global)
+- ✅ ChatScreenState → MessagesStateNotifier (scoped per-chat)
+- ✅ All state mutations provider-managed
 - ✅ No unsafe cast operations
 - ✅ Production-ready code
 
-**Important: Why Messages Are NOT in Provider**
-Messages are **conversation-specific data**, not global UI state. Each ChatScreen instance manages its own messages locally because:
-- Different conversations have different messages
-- Messages need to be loaded/unloaded per-chat
-- Global provider would cause all chats to share the same messages list
-- Local state is the correct pattern for per-instance data
+**Why Scoped Providers for Messages?**
+- ✅ Each chat has its own messages (no shared state)
+- ✅ Better testability (easy to mock per-chat state)
+- ✅ Cleaner separation of concerns
+- ✅ Proper cleanup when chat screen is disposed
+- ✅ No memory leaks from global state
 
 ### How to Use Providers
 
@@ -90,27 +97,51 @@ recordingState.setRecordingDuration(Duration(seconds: 5));
 - ✅ 0 compilation errors, all lint warnings pre-existing
 - ✅ Media file selection and upload fully functional with providers
 
-#### Phase 4: Messages Feature - NOT MIGRATED ⚠️
-**Decision: Keep messages as local state in ChatScreenState**
+#### Phase 4: Messages Feature - Scoped Provider Pattern ✅ COMPLETE
+**Implementation: Each ChatScreen gets its own MessagesStateNotifier**
 
-**Why messages should NOT use a global provider:**
-- ❌ Messages are **per-conversation data**, not shared UI state
-- ❌ Each ChatScreen needs its own independent messages list
-- ❌ Global provider would cause all chat screens to share messages (bug!)
-- ❌ Would need complex scoping or multiple provider instances
-- ✅ Local state (`_messages`, `_visibleCount`) is the correct pattern here
+**Changes Made:**
+1. **chat_list.dart**: Wrapped ChatScreen navigation with `ChangeNotifierProvider`
+   ```dart
+   Navigator.push(
+     MaterialPageRoute(
+       builder: (_) => ChangeNotifierProvider(
+         create: (_) => MessagesStateNotifier(),
+         child: ChatScreen(...),
+       ),
+     ),
+   );
+   ```
 
-**What IS in providers (correct):**
-- ✅ Recording state (shared - one recording at a time across app)
-- ✅ Media selection (shared - one media picker session at a time)
-- ✅ Upload progress (shared - tracks all uploads across app)
+2. **search_users_screen.dart**: Same scoped provider wrapper applied
 
-**What is NOT in providers (correct):**
-- ✅ Messages (per-conversation - each chat has different messages)
-- ✅ Per-chat UI state (scroll position, composer text, etc.)
+3. **chat_state.dart**: Uses the scoped provider
+   - Added `messagesProvider` getter (scoped to this chat)
+   - Replaced all direct `_messages` mutations with provider calls
+   - `_loadMessages()` → `messagesProvider.setMessages()`
+   - `_subscribeToIncomingMessages()` → `messagesProvider.insertMessage/updateMessage()`
+   - `_sendMessage()` → `messagesProvider.insertMessage()`
+   - `_sendTextMessageInBackground()` → `messagesProvider.removeMessage()`
+   - `_visibleMessages()` → `messagesProvider.visibleMessages`
 
-**Phase 4 Conclusion: Migration complete with appropriate scope.**
-Only shared/global UI state moved to providers. Per-instance data remains local.
+**Why Scoped Providers (Option 2)?**
+- ✅ Each chat has independent state (correct!)
+- ✅ Better testability (inject mock providers easily)
+- ✅ Cleaner architecture (separation of concerns)
+- ✅ Automatic cleanup when chat closes
+- ✅ No global state pollution
+- ✅ Follows Flutter best practices
+
+**What's Different from Global Providers?**
+- **Global Providers** (Recording, Media, Upload): Created once in `main.dart`, shared app-wide
+- **Scoped Providers** (Messages): Created per-route, disposed when route pops
+
+**Result:**
+- ✅ 0 compilation errors
+- ✅ Each chat conversation fully isolated
+- ✅ Messages properly scoped per-chat
+- ✅ All provider patterns correctly implemented
+- ✅ Production-ready
 
 ### Implementation Example - Phase 2 (Voice Recording) ✅ COMPLETE
 

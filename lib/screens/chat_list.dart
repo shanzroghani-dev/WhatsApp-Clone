@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:whatsapp_clone/auth/auth_service.dart';
 import 'package:whatsapp_clone/chat/chat_service.dart';
 import 'package:whatsapp_clone/core/profile_service.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
+import 'package:whatsapp_clone/providers/messages_provider.dart';
 import 'package:whatsapp_clone/screens/chat/chat_screen.dart';
 import 'package:whatsapp_clone/screens/search_users_screen.dart';
 import 'package:whatsapp_clone/widgets/profile_avatar.dart';
@@ -130,7 +132,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
     Navigator.of(context)
         .push(
           MaterialPageRoute(
-            builder: (_) => ChatScreen(currentUser: _currentUser!, peer: peer),
+            builder: (_) => ChangeNotifierProvider(
+              create: (_) => MessagesStateNotifier(),
+              child: ChatScreen(currentUser: _currentUser!, peer: peer),
+            ),
           ),
         )
         .then((_) => _loadUsers());

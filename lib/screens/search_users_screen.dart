@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:whatsapp_clone/auth/auth_service.dart';
 import 'package:whatsapp_clone/core/firebase_service.dart';
 import 'package:whatsapp_clone/core/local_db_service.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
+import 'package:whatsapp_clone/providers/messages_provider.dart';
 import 'package:whatsapp_clone/screens/chat/chat_screen.dart';
 import 'package:whatsapp_clone/widgets/profile_avatar.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
@@ -84,9 +86,12 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
     // Navigate to chat screen
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => ChatScreen(
-          currentUser: _currentUser!,
-          peer: _foundUser!,
+        builder: (_) => ChangeNotifierProvider(
+          create: (_) => MessagesStateNotifier(),
+          child: ChatScreen(
+            currentUser: _currentUser!,
+            peer: _foundUser!,
+          ),
         ),
       ),
     );
