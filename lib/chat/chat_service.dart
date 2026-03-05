@@ -414,10 +414,22 @@ class ChatService {
     String? remoteId,
     required String currentUserId,
     required String messageFromId,
+    int? messageTimestamp,
   }) async {
     // Permission check: Only sender can delete for everyone
     if (currentUserId != messageFromId) {
       throw Exception('Only the sender can delete this message for everyone');
+    }
+
+    // Time check: Message must be within 5 minutes to delete for everyone
+    if (messageTimestamp != null) {
+      final currentTimeMs = DateTime.now().millisecondsSinceEpoch;
+      final diffMs = currentTimeMs - messageTimestamp;
+      final fiveMinutesMs = 5 * 60 * 1000;
+      
+      if (diffMs > fiveMinutesMs) {
+        throw Exception('Messages can only be deleted for everyone within 5 minutes of sending');
+      }
     }
 
     // Must have remoteId to delete from Firebase

@@ -1010,19 +1010,43 @@ class ChatScreenState extends State<ChatScreen>
 
   /// Show delete options dialog
   void _showDeleteMessageDialog(MessageModel message, bool isMine) {
+    // Check if message is within 5 minutes (300 seconds)
+    final currentTimeMs = DateTime.now().millisecondsSinceEpoch;
+    final messageTimeMs = message.timestamp;
+    final diffMs = currentTimeMs - messageTimeMs;
+    final isWithinFiveMinutes = diffMs < (5 * 60 * 1000); // 5 minutes in milliseconds
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Message'),
-        content: Text(isMine
-            ? 'Delete this message for everyone or just for you?'
-            : 'Delete this message for you?'),
+        content: isMine
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Delete this message for everyone or just for you?'),
+                  if (!isWithinFiveMinutes)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Text(
+                        '(Can only delete for everyone within 5 minutes)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                ],
+              )
+            : const Text('Delete this message for you?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
-          if (isMine)
+          if (isMine && isWithinFiveMinutes)
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
@@ -1031,6 +1055,16 @@ class ChatScreenState extends State<ChatScreen>
               child: const Text(
                 'Delete for Everyone',
                 style: TextStyle(color: Colors.red),
+              ),
+            ),
+          if (isMine && !isWithinFiveMinutes)
+            TextButton(
+              onPressed: null,
+              child: Text(
+                'Delete for Everyone',
+                style: TextStyle(
+                  color: Colors.grey[400],
+                ),
               ),
             ),
           TextButton(
@@ -1089,6 +1123,7 @@ class ChatScreenState extends State<ChatScreen>
         remoteId: message.remoteId,
         currentUserId: widget.currentUser.uid,
         messageFromId: message.fromId,
+        messageTimestamp: message.timestamp,
       );
 
       print('[ChatScreen] Successfully deleted message for everyone');

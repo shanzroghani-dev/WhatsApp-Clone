@@ -34,9 +34,11 @@ export class MessagesCleanupService {
         const message = messagesMap[messageId];
         const timestamp = message?.timestamp as number;
         const delivered = message?.delivered;
+        const read = message?.read;
 
-        // Delete if delivered and older than 5 minutes
-        if (delivered === true && timestamp && timestamp < fiveMinutesAgo) {
+        // Only delete if BOTH delivered AND read AND older than 5 minutes
+        // This allows users to delete unread/undelivered messages for everyone
+        if (delivered === true && read === true && timestamp && timestamp < fiveMinutesAgo) {
           try {
             await this.fb
               .database()
@@ -44,7 +46,7 @@ export class MessagesCleanupService {
               .remove();
             deletedCount++;
 
-            console.log('Deleted old delivered message', {
+            console.log('Deleted old read message', {
               messageId,
               age: Math.round((Date.now() - timestamp) / 1000 / 60) + 'min',
             });
