@@ -184,6 +184,7 @@ class ChatScreenState extends State<ChatScreen>
     _syncMissedMessages();    initializeAttachmentCacheDir();
     _subscribeToIncomingMessages();
     _subscribeToStatusUpdates();
+    _listenForMessageDeletions();
   }
 
   @override
@@ -302,6 +303,49 @@ class ChatScreenState extends State<ChatScreen>
       } else {
         // Message might not be loaded in current provider, still persist status locally.
         ChatService.updateMessageStatus(targetId, delivered, read);
+      }
+    });
+  }
+
+  /// Listen for message deletions (when messages are removed from Firebase)
+  void _listenForMessageDeletions() {
+    // Set up a periodic check to sync deletions
+    Timer.periodic(const Duration(seconds: 30), (timer) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      
+      try {
+        // Get all messages with remoteId from local DB for this chat
+        final localMessages = messagesProvider.messages
+            .where((m) => 
+                m.remoteId != null && 
+                (m.fromId == widget.peer.uid || m.toId == widget.peer.uid))
+            .toList();
+        
+        // Check if they still exist in Firebase
+        for (final message in localMessages) {
+          if (message.remoteId == null) continue;
+          
+          try {
+            final status = await FirebaseService.getMessageStatus(message.remoteId!);
+            
+            // If message doesn't exist in Firebase (null), delete it locally
+            if (status == null) {
+              await ChatService.syncMessageDeletion(message.remoteId!);
+              
+              // Remove from UI
+              if (mounted) {
+                messagesProvider.removeMessage(message.id);
+              }
+            }
+          } catch (_) {
+            // Skip on error
+          }
+        }
+      } catch (_) {
+        // Handle silently
       }
     });
   }
@@ -822,32 +866,34 @@ class ChatScreenState extends State<ChatScreen>
                             alignment: mine
                                 ? Alignment.centerRight
                                 : Alignment.centerLeft,
-                            child: Container(
-                              constraints: BoxConstraints(
-                                maxWidth:
-                                    MediaQuery.of(context).size.width * 0.75,
-                              ),
-                              margin: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 10,
-                              ),
-                              decoration: BoxDecoration(
-                                gradient: mine
-                                    ? AppColors.primaryGradient
-                                    : null,
-                                color: mine
-                                    ? null
-                                    : (isDark
-                                          ? AppColors.darkSurface
-                                          : AppColors.lightSurface),
-                                borderRadius: BorderRadius.only(
-                                  topLeft: const Radius.circular(16),
-                                  topRight: const Radius.circular(16),
-                                  bottomLeft: Radius.circular(mine ? 16 : 4),
+                            child: GestureDetector(
+                              onLongPress: () => _showDeleteMessageDialog(message, mine),
+                              child: Container(
+                                constraints: BoxConstraints(
+                                  maxWidth:
+                                      MediaQuery.of(context).size.width * 0.75,
+                                ),
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  gradient: mine
+                                      ? AppColors.primaryGradient
+                                      : null,
+                                  color: mine
+                                      ? null
+                                      : (isDark
+                                            ? AppColors.darkSurface
+                                            : AppColors.lightSurface),
+                                  borderRadius: BorderRadius.only(
+                                    topLeft: const Radius.circular(16),
+                                    topRight: const Radius.circular(16),
+                                    bottomLeft: Radius.circular(mine ? 16 : 4),
                                   bottomRight: Radius.circular(mine ? 4 : 16),
                                 ),
                                 boxShadow: [
@@ -890,6 +936,7 @@ class ChatScreenState extends State<ChatScreen>
                                   ),
                                 ],
                               ),
+                            ),
                             ),
                           ),
                         ],
@@ -959,5 +1006,99 @@ class ChatScreenState extends State<ChatScreen>
           ? Colors.blue    // Blue when read
           : Colors.white70, // White/gray when just delivered
     );
+  }
+
+  /// Show delete options dialog
+  void _showDeleteMessageDialog(MessageModel message, bool isMine) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Message'),
+        content: Text(isMine
+            ? 'Delete this message for everyone or just for you?'
+            : 'Delete this message for you?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          if (isMine)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _deleteMessageForEveryone(message);
+              },
+              child: const Text(
+                'Delete for Everyone',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _deleteMessageForMe(message);
+            },
+            child: Text(
+              'Delete for Me',
+              style: TextStyle(color: isMine ? null : Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Delete message for me only
+  Future<void> _deleteMessageForMe(MessageModel message) async {
+    try {
+      await ChatService.deleteMessageForMe(message.id);
+      
+      // Remove from provider/state
+      if (mounted) {
+        final messagesProvider = context.read<MessagesStateNotifier>();
+        messagesProvider.removeMessage(message.id);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Message deleted')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting message: $e')),
+        );
+      }
+    }
+  }
+
+  /// Delete message for everyone (only if sender)
+  Future<void> _deleteMessageForEveryone(MessageModel message) async {
+    try {
+      await ChatService.deleteMessageForEveryone(
+        message.id,
+        remoteId: message.remoteId,
+        currentUserId: widget.currentUser.uid,
+        messageFromId: message.fromId,
+      );
+
+      // Remove from provider/state
+      if (mounted) {        final messagesProvider = context.read<MessagesStateNotifier>();
+        messagesProvider.removeMessage(message.id);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Message deleted for everyone')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
   }
 }

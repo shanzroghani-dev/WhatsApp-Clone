@@ -408,7 +408,18 @@ class ChatService {
   }
 
   /// Delete message from Firebase and local database (Delete for everyone)
-  static Future<void> deleteMessageForEveryone(String messageId, {String? remoteId}) async {
+  /// Only the sender can delete for everyone
+  static Future<void> deleteMessageForEveryone(
+    String messageId, {
+    String? remoteId,
+    required String currentUserId,
+    required String messageFromId,
+  }) async {
+    // Permission check: Only sender can delete for everyone
+    if (currentUserId != messageFromId) {
+      throw Exception('Only the sender can delete this message for everyone');
+    }
+
     // Delete from Firebase using remoteId
     final idToDelete = remoteId ?? messageId;
     try {
