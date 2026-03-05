@@ -19,11 +19,9 @@ export class MessagesTriggerService {
 
     const messageData = data as Record<string, unknown>;
     const messageId = String(event.params.messageId ?? '');
-    const receiverUidFromPath = String(event.params.receiverUid ?? '');
 
     console.log('onMessageCreated triggered', {
       messageId,
-      receiverUidFromPath,
       hasPayload: !!messageData,
     });
 
@@ -38,7 +36,7 @@ export class MessagesTriggerService {
       'toId',
       'receiverUid',
       'receiverId',
-    ]) ?? receiverUidFromPath;
+    ]);
 
     if (!senderUid || !receiverUid || senderUid === receiverUid) {
       console.log('onMessageCreated skipped', {
@@ -207,17 +205,11 @@ export class MessagesTriggerService {
 
     // Mark message as delivered after notification is sent
     try {
-      // Mark delivered in both receiver's incoming path and sender's sent messages path
-      await Promise.all([
-        this.fb
-          .database()
-          .ref(`messages/${receiverUid}/${messageId}/delivered`)
-          .set(true),
-        this.fb
-          .database()
-          .ref(`sentMessages/${senderUid}/${receiverUid}/${messageId}/delivered`)
-          .set(true),
-      ]);
+      // Update flat structure
+      await this.fb
+        .database()
+        .ref(`messages/${messageId}/delivered`)
+        .set(true);
 
       console.log('Delivered status updated', {
         messageId,
