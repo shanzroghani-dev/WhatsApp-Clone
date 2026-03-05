@@ -197,6 +197,132 @@ class _ChatListScreenState extends State<ChatListScreen> {
         .then((_) => _loadUsers());
   }
 
+  void _showDeleteChatDialog(UserModel user) {
+    if (_currentUser == null) return;
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Chat'),
+        content: Text('Delete this chat with ${user.displayName}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _deleteChatForMe(user);
+            },
+            child: const Text('Delete for Me'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _showDeleteForEveryoneConfirmation(user);
+            },
+            child: const Text(
+              'Delete for Everyone',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteForEveryoneConfirmation(UserModel user) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Chat for Everyone?'),
+        content: Text(
+          'This will delete all messages in this conversation for both you and ${user.displayName}.\n\nNote: Messages older than 5 minutes cannot be deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _deleteChatForEveryone(user);
+            },
+            child: const Text(
+              'Delete for Everyone',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteChatForMe(UserModel user) async {
+    if (_currentUser == null) return;
+    
+    try {
+      print('[ChatList] Deleting chat for me: ${user.uid}');
+      await ChatService.deleteConversationForMe(_currentUser!.uid, user.uid);
+      
+      if (mounted) {
+        setState(() {
+          _users.removeWhere((u) => u.uid == user.uid);
+          _lastMessageByUid.remove(user.uid);
+          _lastMessageTimeByUid.remove(user.uid);
+          _unreadCounts.remove(user.uid);
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Chat with ${user.displayName} deleted')),
+        );
+      }
+    } catch (e) {
+      print('[ChatList] Error deleting chat for me: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting chat: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteChatForEveryone(UserModel user) async {
+    if (_currentUser == null) return;
+    
+    try {
+      print('[ChatList] Deleting chat for everyone: ${user.uid}');
+      await ChatService.deleteConversationForEveryone(
+        _currentUser!.uid,
+        user.uid,
+      );
+      
+      if (mounted) {
+        setState(() {
+          _users.removeWhere((u) => u.uid == user.uid);
+          _lastMessageByUid.remove(user.uid);
+          _lastMessageTimeByUid.remove(user.uid);
+          _unreadCounts.remove(user.uid);
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Chat with ${user.displayName} deleted for everyone'),
+          ),
+        );
+      }
+    } catch (e) {
+      print('[ChatList] Error deleting chat for everyone: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -311,6 +437,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                       color: Colors.transparent,
                       child: InkWell(
                         onTap: () => _openChat(user),
+                        onLongPress: () => _showDeleteChatDialog(user),
                         borderRadius: BorderRadius.circular(AppRadius.md),
                         child: Padding(
                           padding: const EdgeInsets.all(AppSpacing.lg),
