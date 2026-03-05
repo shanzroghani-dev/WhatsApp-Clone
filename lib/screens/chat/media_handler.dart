@@ -209,12 +209,10 @@ mixin MediaHandler {
         caption: caption.isEmpty ? null : caption,
       );
 
-      // Load updated messages to replace temp with real message
-      await loadMessages(scrollToBottom: false);
-
-      // Remove the temporary message now that real message is loaded
+      // Replace the temp message with the real message (keeps it visible, no flicker)
       if (mounted) {
         removeMessage(tempMessageId);
+        insertMessage(realMessage);
       }
 
       // Rename thumbnail file to match real message ID

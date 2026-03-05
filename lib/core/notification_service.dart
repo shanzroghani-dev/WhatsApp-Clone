@@ -323,11 +323,7 @@ class NotificationService {
       }
 
       print('[FCM] ✅ markDelivered: msgId=$messageId, receiver=$receiverUid, sender=$senderUid');
-      await FirebaseService.markAsDeliveredForReceiver(
-        receiverUID: receiverUid,
-        messageId: messageId,
-        senderUID: senderUid,
-      );
+      await FirebaseService.markAsDelivered(messageId);
     } catch (e) {
       print('[FCM] ❌ markDelivered error: $e');
     }

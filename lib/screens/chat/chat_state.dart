@@ -344,17 +344,15 @@ class ChatScreenState extends State<ChatScreen>
     required String messageId,
   }) async {
     try {
-      // Get the message to find the sender UID
+      // Get the message to find the sender UID and remoteId
       final message = messagesProvider.messages.firstWhere(
         (m) => m.id == messageId,
         orElse: () => messagesProvider.messages.first,
       );
       
-      // Mark message as delivered and read in Firebase
-      await ChatService.markAsDeliveredAndRead(
-        messageId: messageId,
-        senderUID: message.fromId,
-      );
+      // Mark message as delivered and read in Firebase using remoteId (not localId)
+      final idToUse = message.remoteId ?? messageId;
+      await ChatService.markAsDeliveredAndRead(idToUse);
       
       // Update the message in the provider to reflect the changes
       if (message.id == messageId) {

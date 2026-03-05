@@ -335,10 +335,10 @@ class FirebaseService {
     String? receiverFcmToken,
     String? messageType,
   }) async {
-    final messageRef = _realtimeDb
-        .ref('messages/$receiverUID')
-        .push();
-    final remoteId = messageRef.key ?? localMessageId;
+    // Use flat structure: messages/{messageId}
+    // Always create NEW message with Firebase auto-generated key
+    final messageRef = _realtimeDb.ref('messages').push();
+    final remoteId = messageRef.key!; // Force auto-generated key, never use localMessageId
 
     final payload = {
       'messageId': remoteId,
@@ -350,7 +350,6 @@ class FirebaseService {
       'timestamp': timestamp,
       'delivered': false,
       'read': false,
-      'notificationMeta': {'senderUID': senderUID, 'messageId': remoteId},
     };
 
     // Include notification metadata to avoid Firestore reads in Cloud Function
@@ -358,17 +357,8 @@ class FirebaseService {
     if (receiverFcmToken != null) payload['receiverFcmToken'] = receiverFcmToken;
     if (messageType != null) payload['type'] = messageType;
 
-    // Write message to receiver's incoming path
+    // Write to flat messages structure - ONLY with messageId key
     await messageRef.set(payload);
-
-    // Also store in sender's sent messages path for tracking delivery/read status
-    // This allows the sender to listen for status updates on their sent messages
-    await _realtimeDb
-        .ref('sentMessages/$senderUID/$receiverUID/$remoteId')
-        .set({
-          ...payload,
-          'remoteId': remoteId,
-        });
 
     return remoteId;
   }
@@ -376,8 +366,11 @@ class FirebaseService {
   static Stream<Map<String, dynamic>> listenForIncomingMessages(
     String receiverUID,
   ) {
+    // Query flat structure by toId
     return _realtimeDb
-        .ref('messages/$receiverUID')
+        .ref('messages')
+        .orderByChild('toId')
+        .equalTo(receiverUID)
         .onChildAdded
         .map((event) {
           final value = event.snapshot.value;
@@ -398,8 +391,11 @@ class FirebaseService {
   static Future<List<Map<String, dynamic>>> getUndeliveredMessages(
     String receiverUID,
   ) async {
+    // Query flat structure by toId
     final snapshot = await _realtimeDb
-        .ref('messages/$receiverUID')
+        .ref('messages')
+        .orderByChild('toId')
+        .equalTo(receiverUID)
         .get();
 
     if (!snapshot.exists || snapshot.value is! Map) {
@@ -423,101 +419,48 @@ class FirebaseService {
     return messages;
   }
 
-  static Future<void> markAsDelivered(
-    String messageId, {
-    String? senderUID,
-  }) async {
-    final currentUser = _auth.currentUser;
-    if (currentUser == null) return;
-    
-    // Update in receiver's incoming messages path
+  static Future<void> markAsDelivered(String messageId) async {
+    // Update flat structure with timestamp
+    final now = DateTime.now().millisecondsSinceEpoch;
     await _realtimeDb
-        .ref('messages/${currentUser.uid}/$messageId/delivered')
-        .set(true);
-    
-    // If we have sender UID, also update in sender's sent messages path
-    if (senderUID != null) {
-      await _realtimeDb
-          .ref('sentMessages/$senderUID/${currentUser.uid}/$messageId/delivered')
-          .set(true)
-          .catchError((_) {}); // Ignore errors if sender's path doesn't exist
-    }
+        .ref('messages/$messageId')
+        .update({
+          'delivered': true,
+          'deliveredAt': now,
+        });
   }
 
-  static Future<void> markAsDeliveredForReceiver({
-    required String receiverUID,
-    required String messageId,
-    String? senderUID,
-  }) async {
+  static Future<void> markAsRead(String messageId) async {
+    // Update flat structure with timestamp
+    final now = DateTime.now().millisecondsSinceEpoch;
     await _realtimeDb
-        .ref('messages/$receiverUID/$messageId/delivered')
-        .set(true);
-
-    if (senderUID != null && senderUID.isNotEmpty) {
-      await _realtimeDb
-          .ref('sentMessages/$senderUID/$receiverUID/$messageId/delivered')
-          .set(true)
-          .catchError((_) {});
-    }
-  }
-
-  static Future<void> markAsRead(
-    String messageId, {
-    String? senderUID,
-  }) async {
-    final currentUser = _auth.currentUser;
-    if (currentUser == null) return;
-    
-    // Update in receiver's incoming messages path
-    await _realtimeDb
-        .ref('messages/${currentUser.uid}/$messageId/read')
-        .set(true);
-    
-    // If we have sender UID, also update in sender's sent messages path
-    if (senderUID != null) {
-      await _realtimeDb
-          .ref('sentMessages/$senderUID/${currentUser.uid}/$messageId/read')
-          .set(true)
-          .catchError((_) {}); // Ignore errors if sender's path doesn't exist
-    }
+        .ref('messages/$messageId')
+        .update({
+          'read': true,
+          'readAt': now,
+        });
   }
 
   /// Listen for message status updates (delivered/read changes) on sent messages
   static Stream<Map<String, dynamic>> listenForStatusUpdates(
     String currentUserUID,
   ) {
+    // Query flat structure by fromId
     return _realtimeDb
-        .ref('sentMessages/$currentUserUID')
-        .onValue
-        .asyncExpand((event) {
+        .ref('messages')
+        .orderByChild('fromId')
+        .equalTo(currentUserUID)
+        .onChildChanged
+        .map((event) {
           final value = event.snapshot.value;
           if (value is! Map) {
-            return Stream<Map<String, dynamic>>.empty();
+            return <String, dynamic>{};
           }
-
-          final updates = <Map<String, dynamic>>[];
-          final receiversMap = Map<dynamic, dynamic>.from(value);
-
-          for (final receiverEntry in receiversMap.entries) {
-            final receiverUid = receiverEntry.key?.toString();
-            final receiverValue = receiverEntry.value;
-            if (receiverUid == null || receiverValue is! Map) continue;
-
-            final messagesMap = Map<dynamic, dynamic>.from(receiverValue);
-            for (final messageEntry in messagesMap.entries) {
-              final messageId = messageEntry.key?.toString();
-              final messageValue = messageEntry.value;
-              if (messageId == null || messageValue is! Map) continue;
-
-              final data = Map<String, dynamic>.from(messageValue);
-              data['messageId'] = messageId;
-              data['receiverUID'] = receiverUid;
-              updates.add(data);
-            }
-          }
-
-          return Stream<Map<String, dynamic>>.fromIterable(updates);
-        });
+          final msg = value.cast<String, dynamic>();
+          msg['messageId'] = event.snapshot.key;
+          return msg;
+        })
+        .where((event) => event.isNotEmpty);
   }
 
   /// Get current message status directly from the message
@@ -525,49 +468,18 @@ class FirebaseService {
     String messageId,
   ) async {
     try {
-      final currentUser = _auth.currentUser;
-      if (currentUser == null) return null;
-
+      // Query flat structure by messageId only
       final snapshot = await _realtimeDb
-          .ref('sentMessages/${currentUser.uid}')
+          .ref('messages/$messageId')
           .get();
       
       if (!snapshot.exists || snapshot.value is! Map) {
         return null;
       }
 
-      final receiversMap = Map<dynamic, dynamic>.from(snapshot.value as Map);
-      for (final receiverEntry in receiversMap.entries) {
-        final receiverUid = receiverEntry.key?.toString();
-        final receiverValue = receiverEntry.value;
-        if (receiverUid == null || receiverValue is! Map) continue;
-
-        final messagesMap = Map<dynamic, dynamic>.from(receiverValue);
-        final messageValue = messagesMap[messageId];
-        if (messageValue is Map) {
-          final data = Map<String, dynamic>.from(messageValue);
-          data['messageId'] = messageId;
-          data['receiverUID'] = receiverUid;
-          return data;
-        }
-
-        // Fallback: messageId may be localMessageId; find matching entry.
-        for (final entry in messagesMap.entries) {
-          final remoteKey = entry.key?.toString();
-          final value = entry.value;
-          if (remoteKey == null || value is! Map) continue;
-
-          final data = Map<String, dynamic>.from(value);
-          final localMessageId = data['localMessageId']?.toString();
-          if (localMessageId != messageId) continue;
-
-          data['messageId'] = remoteKey;
-          data['receiverUID'] = receiverUid;
-          return data;
-        }
-      }
-
-      return null;
+      final msg = Map<String, dynamic>.from(snapshot.value as Map);
+      msg['messageId'] = messageId;
+      return msg;
     } catch (e) {
       print('[Firebase] Error fetching message status: $e');
       return null;
@@ -577,29 +489,26 @@ class FirebaseService {
   static Future<void> deleteOldMessagesInCloud(
     int cutoffTime,
   ) async {
+    // Query flat structure
     final snapshot = await _realtimeDb
-        .ref('${AppConstants.messagesPath}')
+        .ref('messages')
+        .orderByChild('timestamp')
+        .endBefore(cutoffTime)
         .get();
+        
     if (!snapshot.exists || snapshot.value is! Map) return;
 
-    final receiversMap = Map<dynamic, dynamic>.from(snapshot.value as Map);
-    for (final receiverEntry in receiversMap.entries) {
-      final receiverUid = receiverEntry.key?.toString();
-      final receiverValue = receiverEntry.value;
-      if (receiverUid == null || receiverValue is! Map) continue;
+    final messagesMap = Map<dynamic, dynamic>.from(snapshot.value as Map);
+    for (final messageEntry in messagesMap.entries) {
+      final messageId = messageEntry.key?.toString();
+      if (messageId == null) continue;
 
-      final messagesMap = Map<dynamic, dynamic>.from(receiverValue);
-      for (final messageEntry in messagesMap.entries) {
-        final messageId = messageEntry.key?.toString();
-        final messageValue = messageEntry.value;
-        if (messageId == null || messageValue is! Map) continue;
-
-        final timestamp = messageValue['timestamp'];
-        if (timestamp is int && timestamp < cutoffTime) {
-          await _realtimeDb
-              .ref('${AppConstants.messagesPath}/$receiverUid/$messageId')
-              .remove();
-        }
+      try {
+        await _realtimeDb
+            .ref('messages/$messageId')
+            .remove();
+      } catch (e) {
+        print('[Firebase] Error deleting message $messageId: $e');
       }
     }
   }

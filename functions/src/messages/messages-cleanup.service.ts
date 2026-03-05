@@ -6,29 +6,6 @@ export class MessagesCleanupService {
   constructor(private readonly fb: FirebaseAdminService) {}
 
   /**
-   * Delete message when it's marked as read
-   */
-  async deleteOnRead(messageId: string): Promise<void> {
-    try {
-      console.log('Deleting read message', {
-        messageId,
-      });
-
-      // Delete from flat structure
-      await this.fb
-        .database()
-        .ref(`messages/${messageId}`)
-        .remove();
-
-      console.log('Successfully deleted read message', {
-        messageId,
-      });
-    } catch (e) {
-      console.error('Failed to delete read message:', e);
-    }
-  }
-
-  /**
    * Delete delivered messages older than 5 minutes
    */
   async deleteOldDeliveredMessages(): Promise<void> {

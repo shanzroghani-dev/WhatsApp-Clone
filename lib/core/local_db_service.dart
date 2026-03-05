@@ -32,7 +32,7 @@ class LocalDBService {
 
     _db = await openDatabase(
       dbPath,
-      version: 5,
+      version: 6,
       onCreate: (db, _) async {
         await _createTables(db);
       },
@@ -89,6 +89,17 @@ class LocalDBService {
             print('[LocalDB] Migration error (non-fatal): $e');
           }
         }
+        if (oldVersion < 6) {
+          // Add deliveredAt and readAt timestamp columns
+          print('[LocalDB] Adding deliveredAt and readAt timestamp columns');
+          try {
+            await db.execute('ALTER TABLE ${AppConstants.localMessagesTable} ADD COLUMN deliveredAt INTEGER');
+            await db.execute('ALTER TABLE ${AppConstants.localMessagesTable} ADD COLUMN readAt INTEGER');
+            print('[LocalDB] ✓ Added deliveredAt and readAt columns');
+          } catch (e) {
+            print('[LocalDB] Migration error (non-fatal): $e');
+          }
+        }
       },
     );
 
@@ -105,7 +116,9 @@ class LocalDBService {
         iv TEXT,
         timestamp INTEGER,
         delivered INTEGER DEFAULT 0,
+        deliveredAt INTEGER,
         read INTEGER DEFAULT 0,
+        readAt INTEGER,
         synced INTEGER DEFAULT 0,
         remoteId TEXT
       )
@@ -190,12 +203,15 @@ class LocalDBService {
 
       return MessageModel(
         id: m['id'] as String,
+        remoteId: m['remoteId'] as String?,
         fromId: m['fromId'] as String,
         toId: m['toId'] as String,
         text: text,
         timestamp: m['timestamp'] as int,
         delivered: (m['delivered'] as int? ?? 0) == 1,
+        deliveredAt: m['deliveredAt'] as int?,
         read: (m['read'] as int? ?? 0) == 1,
+        readAt: m['readAt'] as int?,
       );
     }).toList();
   }
@@ -299,9 +315,13 @@ class LocalDBService {
 
   static Future<void> updateDeliveryStatus(String localMessageId, bool delivered) async {
     final db = await _database;
+    final updates = {
+      'delivered': delivered ? 1 : 0,
+      if (delivered) 'deliveredAt': DateTime.now().millisecondsSinceEpoch,
+    };
     await db.update(
       AppConstants.localMessagesTable,
-      {'delivered': delivered ? 1 : 0},
+      updates,
       where: 'id = ?',
       whereArgs: [localMessageId],
     );
@@ -310,9 +330,13 @@ class LocalDBService {
   static Future<void> updateDeliveryStatusByRemoteId(String remoteMessageId, bool delivered) async {
     if (remoteMessageId.trim().isEmpty) return;
     final db = await _database;
+    final updates = {
+      'delivered': delivered ? 1 : 0,
+      if (delivered) 'deliveredAt': DateTime.now().millisecondsSinceEpoch,
+    };
     await db.update(
       AppConstants.localMessagesTable,
-      {'delivered': delivered ? 1 : 0},
+      updates,
       where: 'remoteId = ?',
       whereArgs: [remoteMessageId],
     );
@@ -320,9 +344,13 @@ class LocalDBService {
 
   static Future<void> updateReadStatus(String localMessageId, bool read) async {
     final db = await _database;
+    final updates = {
+      'read': read ? 1 : 0,
+      if (read) 'readAt': DateTime.now().millisecondsSinceEpoch,
+    };
     await db.update(
       AppConstants.localMessagesTable,
-      {'read': read ? 1 : 0},
+      updates,
       where: 'id = ?',
       whereArgs: [localMessageId],
     );
@@ -331,9 +359,13 @@ class LocalDBService {
   static Future<void> updateReadStatusByRemoteId(String remoteMessageId, bool read) async {
     if (remoteMessageId.trim().isEmpty) return;
     final db = await _database;
+    final updates = {
+      'read': read ? 1 : 0,
+      if (read) 'readAt': DateTime.now().millisecondsSinceEpoch,
+    };
     await db.update(
       AppConstants.localMessagesTable,
-      {'read': read ? 1 : 0},
+      updates,
       where: 'remoteId = ?',
       whereArgs: [remoteMessageId],
     );

@@ -1,12 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { FirebaseAdminService } from '../firebase/firebase-admin.service';
-import { MessagesCleanupService } from '../messages/messages-cleanup.service';
 
 @Injectable()
 export class MessageReadTriggerService {
   constructor(
     private readonly fb: FirebaseAdminService,
-    private readonly cleanup: MessagesCleanupService,
   ) {}
 
   async onMessageRead(event: any): Promise<void> {

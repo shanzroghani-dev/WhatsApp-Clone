@@ -326,12 +326,10 @@ mixin VoiceMessageHandler {
         throw Exception('Failed to send voice message');
       }
 
-      // Reload messages to replace temp with real message
-      await loadMessages(scrollToBottom: false);
-
-      // Remove the temporary message now that real message is loaded
+      // Replace the temp message with the real message (keeps it visible, no flicker)
       if (mounted) {
         removeMessage(tempMessageId);
+        insertMessage(realMessage);
       }
 
       // Update cache path to use real message ID

@@ -3,17 +3,10 @@
     ".read": "auth != null",
     ".write": "auth != null",
     "messages": {
-      "$receiverUID": {
-        ".indexOn": ["timestamp", "delivered"],
-        "$messageId": {}
-      }
-    },
-    "sentMessages": {
-      "$senderUID": {
-        "$receiverUID": {
-          ".indexOn": ["timestamp", "delivered"],
-          "$messageId": {}
-        }
+      ".indexOn": ["fromId", "toId", "timestamp", "delivered", "read"],
+      "$messageId": {
+        ".read": "auth != null && (data.child('fromId').val() === auth.uid || data.child('toId').val() === auth.uid)",
+        ".write": "auth != null"
       }
     }
   }

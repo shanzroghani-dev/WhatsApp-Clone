@@ -292,30 +292,10 @@ class ChatService {
         continue;
       }
 
-      final cipher = msg['text'] as String?;
-      final iv = msg['iv'] as String?;
-      final text = (cipher != null && iv != null)
-          ? (EncryptionService.decryptForUsers(
-                  cipher,
-                  iv,
-                  senderUid,
-                  receiverUid,
-                ) ??
-                '[Message could not be decrypted]')
-          : '[Message could not be decrypted]';
-
-      final model = MessageModel(
-        id:
-            (msg['localMessageId'] as String?) ??
-            (msg['id'] as String?) ??
-            const Uuid().v4(),
-        fromId: senderUid,
-        toId: receiverUid,
-        text: text,
-        timestamp:
-            (msg['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch,
-        delivered: true,
-        read: (msg['read'] as bool?) ?? false,
+      final model = _parseMessageFromFirebase(
+        msg: msg,
+        senderUid: senderUid,
+        receiverUid: receiverUid,
       );
 
       await LocalDBService.saveMessageLocal(
@@ -325,54 +305,81 @@ class ChatService {
       );
 
       if (remoteId != null) {
-        await FirebaseService.markAsDelivered(remoteId, senderUID: senderUid);
+        await FirebaseService.markAsDelivered(remoteId);
       }
       yield model;
     }
   }
 
-  static Future<void> markAsDelivered(
-    String messageId, {
-    String? senderUID,
-  }) async {
-    await FirebaseService.markAsDelivered(messageId, senderUID: senderUID);
-    // Also update local database
+  static Future<void> markAsDelivered(String messageId) async {
+    await FirebaseService.markAsDelivered(messageId);
     try {
       await LocalDBService.updateDeliveryStatus(messageId, true);
-    } catch (_) {
-      // Ignore if message doesn't exist locally
-    }
+    } catch (_) {}
   }
 
-  static Future<void> markAsRead(
-    String messageId, {
-    String? senderUID,
-  }) async {
-    await FirebaseService.markAsRead(messageId, senderUID: senderUID);
-    // Also update local database
+  static Future<void> markAsRead(String messageId) async {
+    await FirebaseService.markAsRead(messageId);
     try {
       await LocalDBService.updateReadStatus(messageId, true);
-    } catch (_) {
-      // Ignore if message doesn't exist locally
-    }
+    } catch (_) {}
   }
 
   /// Mark message as both delivered and read, and sync status back to sender
-  static Future<void> markAsDeliveredAndRead({
-    required String messageId,
-    String? senderUID,
-  }) async {
-    // Update message status in Firebase (status now lives on the message itself)
-    await FirebaseService.markAsDelivered(messageId, senderUID: senderUID);
-    await FirebaseService.markAsRead(messageId, senderUID: senderUID);
-    
-    // Update local database
+  static Future<void> markAsDeliveredAndRead(String messageId) async {
+    await FirebaseService.markAsDelivered(messageId);
+    await FirebaseService.markAsRead(messageId);
     try {
       await LocalDBService.updateDeliveryStatus(messageId, true);
       await LocalDBService.updateReadStatus(messageId, true);
-    } catch (_) {
-      // Ignore if message doesn't exist locally
+    } catch (_) {}
+  }
+
+  /// Helper: Decrypt message text from Firebase data
+  static String _decryptMessageText({
+    required String? cipher,
+    required String? iv,
+    required String senderUid,
+    required String receiverUid,
+  }) {
+    if (cipher == null || iv == null) {
+      return '[Message could not be decrypted]';
     }
+    return EncryptionService.decryptForUsers(
+      cipher,
+      iv,
+      senderUid,
+      receiverUid,
+    ) ?? '[Message could not be decrypted]';
+  }
+
+  /// Helper: Parse message model from Firebase data
+  static MessageModel _parseMessageFromFirebase({
+    required Map<String, dynamic> msg,
+    required String senderUid,
+    required String receiverUid,
+  }) {
+    final remoteId = msg['id'] as String?;
+    final cipher = msg['text'] as String?;
+    final iv = msg['iv'] as String?;
+    final text = _decryptMessageText(
+      cipher: cipher,
+      iv: iv,
+      senderUid: senderUid,
+      receiverUid: receiverUid,
+    );
+    final timestamp = (msg['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch;
+
+    return MessageModel(
+      id: (msg['localMessageId'] as String?) ?? const Uuid().v4(),
+      remoteId: remoteId,
+      fromId: senderUid,
+      toId: receiverUid,
+      text: text,
+      timestamp: timestamp,
+      delivered: true,
+      read: (msg['read'] as bool?) ?? false,
+    );
   }
 
   /// Update message status in local database
@@ -483,36 +490,16 @@ class ChatService {
         final remoteId = msg['id'] as String?;
         if (remoteId != null &&
             await LocalDBService.messageExistsByRemoteId(remoteId)) {
-            await FirebaseService.markAsDelivered(remoteId, senderUID: senderUid);
+            await FirebaseService.markAsDelivered(remoteId);
           continue;
         }
 
-        final cipher = msg['text'] as String?;
-        final iv = msg['iv'] as String?;
-        final text = (cipher != null && iv != null)
-            ? (EncryptionService.decryptForUsers(
-                    cipher,
-                    iv,
-                    senderUid,
-                    receiverUid,
-                  ) ??
-                    '[Message could not be decrypted]')
-            : '[Message could not be decrypted]';
-
-        final timestamp =
-            (msg['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch;
-        final model = MessageModel(
-          id:
-              (msg['localMessageId'] as String?) ??
-              (msg['id'] as String?) ??
-              const Uuid().v4(),
-          fromId: senderUid,
-          toId: receiverUid,
-          text: text,
-          timestamp: timestamp,
-          delivered: true,
-          read: (msg['read'] as bool?) ?? false,
+        final model = _parseMessageFromFirebase(
+          msg: msg,
+          senderUid: senderUid,
+          receiverUid: receiverUid,
         );
+        final timestamp = model.timestamp;
 
         await LocalDBService.saveMessageLocal(
           model,
@@ -522,12 +509,12 @@ class ChatService {
         await LocalDBService.upsertChatListEntry(
           ownerUID: receiverUid,
           peerUID: senderUid,
-          lastMessage: _chatListPreviewText(text),
+          lastMessage: _chatListPreviewText(model.text),
           lastTimestamp: timestamp,
         );
 
         if (remoteId != null) {
-          await FirebaseService.markAsDelivered(remoteId, senderUID: senderUid);
+          await FirebaseService.markAsDelivered(remoteId);
         }
       }
     } catch (e) {
@@ -552,32 +539,12 @@ class ChatService {
         continue;
       }
 
-      final cipher = msg['text'] as String?;
-      final iv = msg['iv'] as String?;
-      final text = (cipher != null && iv != null)
-          ? (EncryptionService.decryptForUsers(
-                  cipher,
-                  iv,
-                  senderUid,
-                  receiverUid,
-                ) ??
-                '[Message could not be decrypted]')
-          : '[Message could not be decrypted]';
-
-      final timestamp =
-          (msg['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch;
-      final model = MessageModel(
-        id:
-            (msg['localMessageId'] as String?) ??
-            (msg['id'] as String?) ??
-            const Uuid().v4(),
-        fromId: senderUid,
-        toId: receiverUid,
-        text: text,
-        timestamp: timestamp,
-        delivered: true,
-        read: (msg['read'] as bool?) ?? false,
+      final model = _parseMessageFromFirebase(
+        msg: msg,
+        senderUid: senderUid,
+        receiverUid: receiverUid,
       );
+      final timestamp = model.timestamp;
 
       await LocalDBService.saveMessageLocal(
         model,
@@ -587,7 +554,7 @@ class ChatService {
       await LocalDBService.upsertChatListEntry(
         ownerUID: receiverUid,
         peerUID: senderUid,
-        lastMessage: _chatListPreviewText(text),
+        lastMessage: _chatListPreviewText(model.text),
         lastTimestamp: timestamp,
       );
 
@@ -603,7 +570,7 @@ class ChatService {
       } catch (_) {}
 
       if (remoteId != null) {
-        await FirebaseService.markAsDelivered(remoteId, senderUID: senderUid);
+        await FirebaseService.markAsDelivered(remoteId);
       }
 
       yield model;
