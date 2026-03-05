@@ -16,6 +16,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -46,6 +47,8 @@ android {
 dependencies {
     // MultiDex support for Firebase
     implementation("androidx.multidex:multidex:2.0.1")
+    // Core library desugaring for flutter_local_notifications
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
 
 flutter {

@@ -69,6 +69,7 @@ class ChatService {
       text: text,
       timestamp: DateTime.now().millisecondsSinceEpoch,
       delivered: false,
+      read: false,
     );
 
     await LocalDBService.saveMessageLocal(message, synced: false);
@@ -81,6 +82,26 @@ class ChatService {
 
     final encrypted = EncryptionService.encryptForUsers(text, fromId, toId);
 
+    // Fetch sender name and receiver FCM token for notification
+    String? senderName;
+    String? receiverFcmToken;
+    String? messageType;
+    try {
+      final senderProfile = await FirebaseService.getUserByUid(fromId);
+      senderName = senderProfile?.displayName;
+      
+      final receiverProfile = await FirebaseService.getUserByUid(toId);
+      receiverFcmToken = receiverProfile?.fcmToken;
+      
+      // Detect message type from attachment prefix
+      if (isAttachmentMessage(text)) {
+        final attachment = parseAttachmentPayload(text);
+        messageType = attachment?['type'] as String?;
+      }
+    } catch (_) {
+      // Continue even if profile fetch fails
+    }
+
     try {
       final remoteId = await FirebaseService.sendMessage(
         senderUID: fromId,
@@ -89,6 +110,9 @@ class ChatService {
         iv: encrypted['iv']!,
         timestamp: message.timestamp,
         localMessageId: message.id,
+        senderName: senderName,
+        receiverFcmToken: receiverFcmToken,
+        messageType: messageType,
       );
       await LocalDBService.markOutgoingSynced(message.id, remoteId: remoteId);
     } catch (_) {
@@ -259,7 +283,8 @@ class ChatService {
     await for (final msg in FirebaseService.listenForIncomingMessages(
       receiverUid,
     )) {
-      if (msg['senderUID'] != senderUid) continue;
+      final incomingSenderUid = (msg['fromId'] as String?) ?? (msg['senderUID'] as String?);
+      if (incomingSenderUid == null || incomingSenderUid != senderUid) continue;
 
       final remoteId = msg['id'] as String?;
       if (remoteId != null &&
@@ -290,6 +315,7 @@ class ChatService {
         timestamp:
             (msg['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch,
         delivered: true,
+        read: (msg['read'] as bool?) ?? false,
       );
 
       await LocalDBService.saveMessageLocal(
@@ -299,17 +325,74 @@ class ChatService {
       );
 
       if (remoteId != null) {
-        await FirebaseService.markAsDelivered(receiverUid, remoteId);
+        await FirebaseService.markAsDelivered(remoteId, senderUID: senderUid);
       }
       yield model;
     }
   }
 
   static Future<void> markAsDelivered(
-    String receiverUID,
+    String messageId, {
+    String? senderUID,
+  }) async {
+    await FirebaseService.markAsDelivered(messageId, senderUID: senderUID);
+    // Also update local database
+    try {
+      await LocalDBService.updateDeliveryStatus(messageId, true);
+    } catch (_) {
+      // Ignore if message doesn't exist locally
+    }
+  }
+
+  static Future<void> markAsRead(
+    String messageId, {
+    String? senderUID,
+  }) async {
+    await FirebaseService.markAsRead(messageId, senderUID: senderUID);
+    // Also update local database
+    try {
+      await LocalDBService.updateReadStatus(messageId, true);
+    } catch (_) {
+      // Ignore if message doesn't exist locally
+    }
+  }
+
+  /// Mark message as both delivered and read, and sync status back to sender
+  static Future<void> markAsDeliveredAndRead({
+    required String messageId,
+    String? senderUID,
+  }) async {
+    // Update message status in Firebase (status now lives on the message itself)
+    await FirebaseService.markAsDelivered(messageId, senderUID: senderUID);
+    await FirebaseService.markAsRead(messageId, senderUID: senderUID);
+    
+    // Update local database
+    try {
+      await LocalDBService.updateDeliveryStatus(messageId, true);
+      await LocalDBService.updateReadStatus(messageId, true);
+    } catch (_) {
+      // Ignore if message doesn't exist locally
+    }
+  }
+
+  /// Update message status in local database
+  static Future<void> updateMessageStatus(
     String messageId,
+    bool delivered,
+    bool read,
   ) async {
-    await FirebaseService.markAsDelivered(receiverUID, messageId);
+    try {
+      if (delivered) {
+        await LocalDBService.updateDeliveryStatus(messageId, true);
+        await LocalDBService.updateDeliveryStatusByRemoteId(messageId, true);
+      }
+      if (read) {
+        await LocalDBService.updateReadStatus(messageId, true);
+        await LocalDBService.updateReadStatusByRemoteId(messageId, true);
+      }
+    } catch (_) {
+      // Ignore if message doesn't exist locally
+    }
   }
 
   static Future<void> deleteMessage(String messageId) async {
@@ -342,13 +425,30 @@ class ChatService {
     final cutoff = DateTime.now()
         .subtract(const Duration(hours: 24))
         .millisecondsSinceEpoch;
-    await FirebaseService.deleteOldMessagesInCloud(receiverUID, cutoff);
+    await FirebaseService.deleteOldMessagesInCloud(cutoff);
   }
 
   static Future<void> syncPendingOutgoing() async {
     final queue = await LocalDBService.getOutgoingQueue();
     for (final item in queue) {
       try {
+        // Fetch notification metadata for retry
+        String? senderName;
+        String? receiverFcmToken;
+        try {
+          final senderProfile = await FirebaseService.getUserByUid(
+            item['senderUID'] as String,
+          );
+          senderName = senderProfile?.displayName;
+          
+          final receiverProfile = await FirebaseService.getUserByUid(
+            item['receiverUID'] as String,
+          );
+          receiverFcmToken = receiverProfile?.fcmToken;
+        } catch (_) {
+          // Continue even if profile fetch fails
+        }
+
         final remoteId = await FirebaseService.sendMessage(
           senderUID: item['senderUID'] as String,
           receiverUID: item['receiverUID'] as String,
@@ -356,6 +456,8 @@ class ChatService {
           iv: item['iv'] as String,
           timestamp: item['timestamp'] as int,
           localMessageId: item['localMessageId'] as String,
+          senderName: senderName,
+          receiverFcmToken: receiverFcmToken,
         );
         await LocalDBService.markOutgoingSynced(
           item['localMessageId'] as String,
@@ -369,6 +471,70 @@ class ChatService {
     }
   }
 
+  /// Sync undelivered incoming messages (fetch missed messages)
+  static Future<void> syncIncomingMessages(String receiverUid) async {
+    try {
+      final undelivered = await FirebaseService.getUndeliveredMessages(receiverUid);
+      
+      for (final msg in undelivered) {
+        final senderUid = (msg['fromId'] as String?) ?? (msg['senderUID'] as String?);
+        if (senderUid == null || senderUid.isEmpty) continue;
+
+        final remoteId = msg['id'] as String?;
+        if (remoteId != null &&
+            await LocalDBService.messageExistsByRemoteId(remoteId)) {
+            await FirebaseService.markAsDelivered(remoteId, senderUID: senderUid);
+          continue;
+        }
+
+        final cipher = msg['text'] as String?;
+        final iv = msg['iv'] as String?;
+        final text = (cipher != null && iv != null)
+            ? (EncryptionService.decryptForUsers(
+                    cipher,
+                    iv,
+                    senderUid,
+                    receiverUid,
+                  ) ??
+                    '[Message could not be decrypted]')
+            : '[Message could not be decrypted]';
+
+        final timestamp =
+            (msg['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch;
+        final model = MessageModel(
+          id:
+              (msg['localMessageId'] as String?) ??
+              (msg['id'] as String?) ??
+              const Uuid().v4(),
+          fromId: senderUid,
+          toId: receiverUid,
+          text: text,
+          timestamp: timestamp,
+          delivered: true,
+          read: (msg['read'] as bool?) ?? false,
+        );
+
+        await LocalDBService.saveMessageLocal(
+          model,
+          synced: true,
+          remoteId: remoteId,
+        );
+        await LocalDBService.upsertChatListEntry(
+          ownerUID: receiverUid,
+          peerUID: senderUid,
+          lastMessage: _chatListPreviewText(text),
+          lastTimestamp: timestamp,
+        );
+
+        if (remoteId != null) {
+          await FirebaseService.markAsDelivered(remoteId, senderUID: senderUid);
+        }
+      }
+    } catch (e) {
+      print('Error syncing incoming messages: $e');
+    }
+  }
+
   static Future<int> getMessageCount(String userId1, String userId2) async {
     return LocalDBService.getMessageCount(userId1, userId2);
   }
@@ -377,7 +543,7 @@ class ChatService {
     await for (final msg in FirebaseService.listenForIncomingMessages(
       receiverUid,
     )) {
-      final senderUid = msg['senderUID'] as String?;
+      final senderUid = (msg['fromId'] as String?) ?? (msg['senderUID'] as String?);
       if (senderUid == null || senderUid.isEmpty) continue;
 
       final remoteId = msg['id'] as String?;
@@ -410,6 +576,7 @@ class ChatService {
         text: text,
         timestamp: timestamp,
         delivered: true,
+        read: (msg['read'] as bool?) ?? false,
       );
 
       await LocalDBService.saveMessageLocal(
@@ -436,7 +603,7 @@ class ChatService {
       } catch (_) {}
 
       if (remoteId != null) {
-        await FirebaseService.markAsDelivered(receiverUid, remoteId);
+        await FirebaseService.markAsDelivered(remoteId, senderUID: senderUid);
       }
 
       yield model;

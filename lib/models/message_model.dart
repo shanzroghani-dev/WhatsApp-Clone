@@ -6,6 +6,7 @@ class MessageModel {
   final String text;
   final int timestamp;
   final bool delivered;
+  final bool read;
 
   MessageModel({
     required this.id,
@@ -14,6 +15,7 @@ class MessageModel {
     required this.text,
     required this.timestamp,
     this.delivered = false,
+    this.read = false,
   });
 
   /// Convert to JSON for Realtime DB
@@ -24,6 +26,7 @@ class MessageModel {
         'text': text,
         'timestamp': timestamp,
         'delivered': delivered,
+        'read': read,
       };
 
   /// Create from Realtime DB JSON
@@ -34,6 +37,7 @@ class MessageModel {
         text: json['text'] as String? ?? '',
         timestamp: json['timestamp'] as int,
         delivered: json['delivered'] as bool? ?? false,
+        read: json['read'] as bool? ?? false,
       );
 
   /// Copy with modifications
@@ -44,6 +48,7 @@ class MessageModel {
     String? text,
     int? timestamp,
     bool? delivered,
+    bool? read,
   }) =>
       MessageModel(
         id: id ?? this.id,
@@ -52,6 +57,7 @@ class MessageModel {
         text: text ?? this.text,
         timestamp: timestamp ?? this.timestamp,
         delivered: delivered ?? this.delivered,
+        read: read ?? this.read,
       );
 
   /// Check if message is older than 24 hours

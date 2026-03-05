@@ -63,3 +63,13 @@ android/key.properties
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
 lib/firebase_options.dart
+
+# Cloud Functions dependencies and build output
+functions/node_modules/
+functions/dist/
+functions/package-lock.json
+
+# Build outputs
+build/
+*.o
+*.so

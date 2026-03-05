@@ -63,7 +63,7 @@ class SentChatBubble extends StatelessWidget {
                           ? Icons.done_all
                           : Icons.done,
                   size: AppDimensions.iconSmall,
-                  color: AppColors.white,
+                  color: read ? Colors.blue : AppColors.white,
                 ),
               ],
             ),

@@ -10,6 +10,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:whatsapp_clone/chat/chat_service.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
+import 'package:whatsapp_clone/core/firebase_service.dart';
+import 'package:whatsapp_clone/core/local_db_service.dart';
+import 'package:whatsapp_clone/core/notification_service.dart';
 import 'package:whatsapp_clone/models/message_model.dart';
 import 'package:whatsapp_clone/providers/media_provider.dart';
 import 'package:whatsapp_clone/providers/messages_provider.dart';
@@ -22,6 +25,7 @@ import 'package:whatsapp_clone/screens/chat/widgets/chat_composer.dart';
 import 'package:whatsapp_clone/screens/chat/voice_message_handler.dart';
 import 'package:whatsapp_clone/screens/chat/media_handler.dart';
 import 'package:whatsapp_clone/screens/chat/message_builder.dart';
+import 'package:whatsapp_clone/screens/user_profile_screen.dart';
 
 class ChatScreenState extends State<ChatScreen>
     with VoiceMessageHandler, MediaHandler, MessageBuilder {
@@ -32,6 +36,7 @@ class ChatScreenState extends State<ChatScreen>
   final AudioPlayer _audioPlayer = AudioPlayer();
 
   StreamSubscription<MessageModel>? _incomingSubscription;
+  StreamSubscription<Map<String, dynamic>>? _statusSubscription;
   static const int _pageSize = 30;
   bool _isLoadingMore = false;
   bool _hasMoreMessages = false;
@@ -163,6 +168,10 @@ class ChatScreenState extends State<ChatScreen>
   @override
   void initState() {
     super.initState();
+    NotificationService.setActiveChat(
+      currentUserUid: widget.currentUser.uid,
+      peerUid: widget.peer.uid,
+    );
     _scrollController.addListener(_onScroll);
     _messageController.addListener(_onComposerChanged);
     _audioPlayer.onPlayerComplete.listen((_) {
@@ -171,9 +180,10 @@ class ChatScreenState extends State<ChatScreen>
       if (_isInitialized) {
         recordingProvider.setPlayingAudioMessageId(null);
       }
-    });
-    initializeAttachmentCacheDir();
+    });    // Sync any missed messages before displaying chat
+    _syncMissedMessages();    initializeAttachmentCacheDir();
     _subscribeToIncomingMessages();
+    _subscribeToStatusUpdates();
   }
 
   @override
@@ -191,10 +201,12 @@ class ChatScreenState extends State<ChatScreen>
 
   @override
   void dispose() {
+    NotificationService.clearActiveChat(peerUid: widget.peer.uid);
     recordingProvider.recordingTimer?.cancel();
     unawaited(_audioRecorder.dispose());
     unawaited(_audioPlayer.dispose());
     _incomingSubscription?.cancel();
+    _statusSubscription?.cancel();
     _messageController.removeListener(_onComposerChanged);
     _messageController.dispose();
     _scrollController.removeListener(_onScroll);
@@ -242,9 +254,117 @@ class ChatScreenState extends State<ChatScreen>
                   newMessage,
                 ); // Use override that includes setState()
               }
+              
+              // Mark incoming messages as delivered and read
+              if (newMessage.fromId == widget.peer.uid) {
+                _markMessageAsDeliveredAndRead(
+                  messageId: newMessage.id,
+                );
+              }
             }
           }
         });
+  }
+
+  /// Subscribe to status updates for messages sent by current user
+  void _subscribeToStatusUpdates() {
+    _statusSubscription = FirebaseService.listenForStatusUpdates(
+      widget.currentUser.uid,
+    ).listen((statusUpdate) {
+      if (!mounted) return;
+      
+      final messageId = statusUpdate['messageId'] as String?;
+      final localMessageId = statusUpdate['localMessageId'] as String?;
+      final delivered = statusUpdate['delivered'] as bool? ?? false;
+      final read = statusUpdate['read'] as bool? ?? false;
+      
+      if (messageId == null && localMessageId == null) return;
+
+      final targetId = messageId ?? localMessageId!;
+      
+      // Find and update the message in the provider
+      final messageIndex = messagesProvider.messages.indexWhere(
+        (m) => m.id == targetId || (localMessageId != null && m.id == localMessageId),
+      );
+      
+      if (messageIndex != -1) {
+        final message = messagesProvider.messages[messageIndex];
+        final updatedMessage = message.copyWith(
+          delivered: delivered,
+          read: read,
+        );
+        messagesProvider.updateMessage(updatedMessage);
+        
+        // Also update local DB
+        ChatService.updateMessageStatus(targetId, delivered, read);
+        
+        setState(() {}); // Force UI rebuild to show new status
+      } else {
+        // Message might not be loaded in current provider, still persist status locally.
+        ChatService.updateMessageStatus(targetId, delivered, read);
+      }
+    });
+  }
+
+  /// Sync any missed messages before displaying chat
+  Future<void> _syncMissedMessages() async {
+    try {
+      // First sync all undelivered messages for current user
+      await ChatService.syncIncomingMessages(widget.currentUser.uid);
+      
+      // Then reload messages for this chat
+      await _loadMessages(scrollToBottom: true);
+      
+      // Mark all messages from peer as delivered and read
+      await _markAllPeerMessagesAsDeliveredAndRead();
+    } catch (e) {
+      // Handle silently
+    }
+  }
+
+  /// Mark all incoming messages from peer as delivered and read
+  Future<void> _markAllPeerMessagesAsDeliveredAndRead() async {
+    try {
+      final messages = messagesProvider.messages
+          .where((m) => m.fromId == widget.peer.uid && (!m.delivered || !m.read))
+          .toList();
+      
+      for (final message in messages) {
+        await _markMessageAsDeliveredAndRead(
+          messageId: message.id,
+        );
+      }
+    } catch (e) {
+      // Handle silently
+    }
+  }
+
+  /// Mark a single message as delivered and read
+  Future<void> _markMessageAsDeliveredAndRead({
+    required String messageId,
+  }) async {
+    try {
+      // Get the message to find the sender UID
+      final message = messagesProvider.messages.firstWhere(
+        (m) => m.id == messageId,
+        orElse: () => messagesProvider.messages.first,
+      );
+      
+      // Mark message as delivered and read in Firebase
+      await ChatService.markAsDeliveredAndRead(
+        messageId: messageId,
+        senderUID: message.fromId,
+      );
+      
+      // Update the message in the provider to reflect the changes
+      if (message.id == messageId) {
+        final updatedMessage = message.copyWith(delivered: true, read: true);
+        messagesProvider.updateMessage(updatedMessage);
+        if (mounted) setState(() {}); // Force UI rebuild
+      }
+    } catch (e) {
+      // Handle silently
+    }
   }
 
   void _loadMoreMessages() {
@@ -274,6 +394,10 @@ class ChatScreenState extends State<ChatScreen>
 
       if (mounted) {
         messagesProvider.setMessages(messages);
+        
+        // Sync status from Firebase for sent messages
+        await _loadMessageStatusFromFirebase(messages);
+        
         setState(() {
           _hasMoreMessages = messages.length >= _pageSize;
         });
@@ -287,6 +411,51 @@ class ChatScreenState extends State<ChatScreen>
       }
     } catch (_) {
       // Handle error silently or show snackbar
+    }
+  }
+
+  /// Load message delivery/read status from Firebase for sent messages
+  Future<void> _loadMessageStatusFromFirebase(List<MessageModel> messages) async {
+    try {
+      // Only check status for messages sent by current user
+      final sentMessages = messages.where((m) => m.fromId == widget.currentUser.uid).toList();
+      
+      for (final message in sentMessages) {
+        try {
+          final status = await FirebaseService.getMessageStatus(
+            message.id,
+          );
+          
+          if (status != null) {
+            final delivered = status['delivered'] as bool? ?? false;
+            final read = status['read'] as bool? ?? false;
+            
+            if (delivered || read) {
+              final updatedMessage = message.copyWith(
+                delivered: delivered,
+                read: read,
+              );
+              messagesProvider.updateMessage(updatedMessage);
+              
+              // Also update local DB
+              if (delivered) {
+                await LocalDBService.updateDeliveryStatus(message.id, true);
+              }
+              if (read) {
+                await LocalDBService.updateReadStatus(message.id, true);
+              }
+            }
+          }
+        } catch (_) {
+          // Silently continue if status fetch fails
+        }
+      }
+      
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (_) {
+      // Handle silently
     }
   }
 
@@ -307,6 +476,7 @@ class ChatScreenState extends State<ChatScreen>
       text: text,
       timestamp: DateTime.now().millisecondsSinceEpoch,
       delivered: false,
+      read: false,
     );
 
     insertMessage(tempMessage); // Use override that includes setState()
@@ -343,14 +513,34 @@ class ChatScreenState extends State<ChatScreen>
         text: text,
       );
 
-      await _loadMessages(scrollToBottom: false);
+      // Load fresh messages (includes Firebase messages)
+      final messages = await ChatService.getMessagesBetween(
+        widget.currentUser.uid,
+        widget.peer.uid,
+      );
 
       if (mounted) {
-        removeMessage(tempMessageId); // Use override that includes setState()
+        // Find the newly sent message (should be the most recent one from current user with matching text)
+        MessageModel? realMessage;
+        for (final msg in messages) {
+          if (msg.fromId == widget.currentUser.uid && msg.text == text) {
+            // If multiple messages with same text, take the newest one
+            if (realMessage == null || msg.timestamp > realMessage.timestamp) {
+              realMessage = msg;
+            }
+          }
+        }
+
+        if (realMessage != null) {
+          // Remove temp message and add real one
+          messagesProvider.removeMessage(tempMessageId);
+          messagesProvider.insertMessage(realMessage);
+          setState(() {});
+        }
       }
     } catch (e) {
       if (mounted) {
-        removeMessage(tempMessageId); // Use override that includes setState()
+        removeMessage(tempMessageId); // Remove on error
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Failed to send message')));
@@ -523,49 +713,58 @@ class ChatScreenState extends State<ChatScreen>
         titleSpacing: 0,
         elevation: 1,
         shadowColor: Colors.black.withValues(alpha: 0.1),
-        title: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: const BoxDecoration(shape: BoxShape.circle),
-              child: ClipOval(
-                child: Image.network(
-                  widget.peer.profilePic,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    color: Colors.grey[400],
-                    child: Icon(Icons.person, color: Colors.grey[600]),
+        title: InkWell(
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => UserProfileScreen(user: widget.peer),
+              ),
+            );
+          },
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: const BoxDecoration(shape: BoxShape.circle),
+                child: ClipOval(
+                  child: Image.network(
+                    widget.peer.profilePic,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: Colors.grey[400],
+                      child: Icon(Icons.person, color: Colors.grey[600]),
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.peer.displayName,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.peer.displayName,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    widget.peer.isOnline ? 'Online' : 'Offline',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w400,
-                      color: isDark ? Colors.white70 : Colors.black54,
+                    const SizedBox(height: 2),
+                    Text(
+                      widget.peer.isOnline ? 'Online' : 'Offline',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        color: isDark ? Colors.white70 : Colors.black54,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
       body: Column(
@@ -739,11 +938,28 @@ class ChatScreenState extends State<ChatScreen>
       return const SizedBox.shrink();
     }
 
-    // Show double tick if delivered, single tick if sent but not delivered
+    // Determine tick style based on message status:
+    // - No tick: pending (handled above)
+    // - Single tick: sent but not delivered
+    // - Double tick (white/gray): delivered but not read
+    // - Double tick (blue): delivered AND read
+    
+    if (!message.delivered) {
+      // Single tick - sent but not delivered yet
+      return const Icon(
+        Icons.done,
+        size: 14,
+        color: Colors.white70,
+      );
+    }
+    
+    // Double tick - delivered
     return Icon(
-      message.delivered ? Icons.done_all : Icons.done,
+      Icons.done_all,
       size: 14,
-      color: message.delivered ? Colors.white : Colors.white70,
+      color: message.read 
+          ? Colors.blue    // Blue when read
+          : Colors.white70, // White/gray when just delivered
     );
   }
 }

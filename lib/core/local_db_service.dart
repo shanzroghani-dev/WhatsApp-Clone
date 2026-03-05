@@ -32,7 +32,7 @@ class LocalDBService {
 
     _db = await openDatabase(
       dbPath,
-      version: 4,
+      version: 5,
       onCreate: (db, _) async {
         await _createTables(db);
       },
@@ -79,6 +79,16 @@ class LocalDBService {
             print('[LocalDB] Migration error (non-fatal): $e');
           }
         }
+        if (oldVersion < 5) {
+          // Add read column to messages table
+          print('[LocalDB] Adding read column to messages table');
+          try {
+            await db.execute('ALTER TABLE ${AppConstants.localMessagesTable} ADD COLUMN read INTEGER DEFAULT 0');
+            print('[LocalDB] ✓ Added read column');
+          } catch (e) {
+            print('[LocalDB] Migration error (non-fatal): $e');
+          }
+        }
       },
     );
 
@@ -95,6 +105,7 @@ class LocalDBService {
         iv TEXT,
         timestamp INTEGER,
         delivered INTEGER DEFAULT 0,
+        read INTEGER DEFAULT 0,
         synced INTEGER DEFAULT 0,
         remoteId TEXT
       )
@@ -184,6 +195,7 @@ class LocalDBService {
         text: text,
         timestamp: m['timestamp'] as int,
         delivered: (m['delivered'] as int? ?? 0) == 1,
+        read: (m['read'] as int? ?? 0) == 1,
       );
     }).toList();
   }
@@ -207,6 +219,7 @@ class LocalDBService {
         'iv': iv.base64,
         'timestamp': m.timestamp,
         'delivered': m.delivered ? 1 : 0,
+        'read': m.read ? 1 : 0,
         'synced': synced ? 1 : 0,
         'remoteId': remoteId,
       },
@@ -291,6 +304,38 @@ class LocalDBService {
       {'delivered': delivered ? 1 : 0},
       where: 'id = ?',
       whereArgs: [localMessageId],
+    );
+  }
+
+  static Future<void> updateDeliveryStatusByRemoteId(String remoteMessageId, bool delivered) async {
+    if (remoteMessageId.trim().isEmpty) return;
+    final db = await _database;
+    await db.update(
+      AppConstants.localMessagesTable,
+      {'delivered': delivered ? 1 : 0},
+      where: 'remoteId = ?',
+      whereArgs: [remoteMessageId],
+    );
+  }
+
+  static Future<void> updateReadStatus(String localMessageId, bool read) async {
+    final db = await _database;
+    await db.update(
+      AppConstants.localMessagesTable,
+      {'read': read ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [localMessageId],
+    );
+  }
+
+  static Future<void> updateReadStatusByRemoteId(String remoteMessageId, bool read) async {
+    if (remoteMessageId.trim().isEmpty) return;
+    final db = await _database;
+    await db.update(
+      AppConstants.localMessagesTable,
+      {'read': read ? 1 : 0},
+      where: 'remoteId = ?',
+      whereArgs: [remoteMessageId],
     );
   }
 

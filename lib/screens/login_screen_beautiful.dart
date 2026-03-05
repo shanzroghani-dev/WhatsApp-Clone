@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/auth/auth_service.dart';
+import 'package:whatsapp_clone/core/notification_service.dart';
 import 'package:whatsapp_clone/screens/register.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
 
@@ -10,7 +11,8 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   String? _emailError;
@@ -31,10 +33,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
     );
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeOut));
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
+          CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
+        );
     _animationController.forward();
   }
 
@@ -66,7 +68,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
     setState(() => _loading = true);
     try {
-      await AuthService.loginUser(email: email, password: password);
+      final user = await AuthService.loginUser(
+        email: email,
+        password: password,
+      );
+      NotificationService.setCurrentUserUid(user.uid);
       if (!mounted) return;
       Navigator.of(context).pushReplacementNamed('/home');
     } catch (e) {
@@ -76,7 +82,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           content: Text('Login failed: $e'),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+          ),
         ),
       );
       setState(() => _loading = false);
@@ -104,7 +112,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           child: SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
             child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: size.height - MediaQuery.of(context).padding.top),
+              constraints: BoxConstraints(
+                minHeight: size.height - MediaQuery.of(context).padding.top,
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(AppSpacing.xl),
                 child: FadeTransition(
@@ -116,7 +126,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         const SizedBox(height: AppSpacing.xxxl),
-                        
+
                         // Logo with gradient
                         Center(
                           child: Container(
@@ -136,31 +146,35 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             ),
                           ),
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.xxxl),
-                        
+
                         // Welcome Text
                         Text(
                           'Welcome Back!',
                           style: theme.textTheme.displaySmall?.copyWith(
                             fontWeight: FontWeight.w800,
-                            color: isDark ? AppColors.darkText : AppColors.lightText,
+                            color: isDark
+                                ? AppColors.darkText
+                                : AppColors.lightText,
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.sm),
-                        
+
                         Text(
                           'Sign in to continue your conversations',
                           style: theme.textTheme.bodyLarge?.copyWith(
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            color: isDark
+                                ? AppColors.darkTextSecondary
+                                : AppColors.lightTextSecondary,
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.xxxl * 1.5),
-                        
+
                         // Email Field
                         _buildModernTextField(
                           controller: _emailController,
@@ -171,9 +185,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           keyboardType: TextInputType.emailAddress,
                           isDark: isDark,
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.xl),
-                        
+
                         // Password Field
                         _buildModernTextField(
                           controller: _passwordController,
@@ -185,15 +199,21 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           isDark: isDark,
                           suffixIcon: IconButton(
                             icon: Icon(
-                              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                              _obscurePassword
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                              color: isDark
+                                  ? AppColors.darkTextSecondary
+                                  : AppColors.lightTextSecondary,
                             ),
-                            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                            onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
                           ),
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.md),
-                        
+
                         // Forgot Password
                         Align(
                           alignment: Alignment.centerRight,
@@ -202,15 +222,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             child: Text(
                               'Forgot Password?',
                               style: TextStyle(
-                                color: isDark ? AppColors.accent : AppColors.primary,
+                                color: isDark
+                                    ? AppColors.accent
+                                    : AppColors.primary,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.xl),
-                        
+
                         // Login Button - Gradient
                         Container(
                           height: 56,
@@ -227,7 +249,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               backgroundColor: Colors.transparent,
                               shadowColor: Colors.transparent,
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(AppRadius.sm),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.sm,
+                                ),
                               ),
                             ),
                             child: _loading
@@ -250,9 +274,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   ),
                           ),
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.xxxl),
-                        
+
                         // Divider
                         Row(
                           children: [
@@ -263,11 +287,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               ),
                             ),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.lg,
+                              ),
                               child: Text(
                                 'OR',
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                  color: isDark
+                                      ? AppColors.darkTextSecondary
+                                      : AppColors.lightTextSecondary,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -280,9 +308,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             ),
                           ],
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.xxxl),
-                        
+
                         // Create Account
                         Center(
                           child: Row(
@@ -291,26 +319,32 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               Text(
                                 "Don't have an account? ",
                                 style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                  color: isDark
+                                      ? AppColors.darkTextSecondary
+                                      : AppColors.lightTextSecondary,
                                 ),
                               ),
                               GestureDetector(
                                 onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                                  MaterialPageRoute(
+                                    builder: (_) => const RegisterScreen(),
+                                  ),
                                 ),
                                 child: Text(
                                   'Sign Up',
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w700,
-                                    color: isDark ? AppColors.accent : AppColors.primary,
+                                    color: isDark
+                                        ? AppColors.accent
+                                        : AppColors.primary,
                                   ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.xxxl),
                       ],
                     ),
@@ -336,7 +370,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     Widget? suffixIcon,
   }) {
     final theme = Theme.of(context);
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -356,8 +390,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               color: error != null
                   ? AppColors.error
                   : isDark
-                      ? Colors.white10
-                      : Colors.black.withOpacity(0.1),
+                  ? Colors.white10
+                  : Colors.black.withOpacity(0.1),
               width: 1.5,
             ),
             boxShadow: error == null ? AppShadows.subtleList : null,
@@ -376,7 +410,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               ),
               prefixIcon: Icon(
                 icon,
-                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                color: isDark
+                    ? AppColors.darkTextSecondary
+                    : AppColors.lightTextSecondary,
               ),
               suffixIcon: suffixIcon,
               border: InputBorder.none,
@@ -389,7 +425,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         ),
         if (error != null)
           Padding(
-            padding: const EdgeInsets.only(top: AppSpacing.sm, left: AppSpacing.sm),
+            padding: const EdgeInsets.only(
+              top: AppSpacing.sm,
+              left: AppSpacing.sm,
+            ),
             child: Row(
               children: [
                 const Icon(

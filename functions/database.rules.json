@@ -1,0 +1,20 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+    "messages": {
+      "$receiverUID": {
+        ".indexOn": ["timestamp", "delivered"],
+        "$messageId": {}
+      }
+    },
+    "sentMessages": {
+      "$senderUID": {
+        "$receiverUID": {
+          ".indexOn": ["timestamp", "delivered"],
+          "$messageId": {}
+        }
+      }
+    }
+  }
+}

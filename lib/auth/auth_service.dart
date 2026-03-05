@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:whatsapp_clone/core/firebase_service.dart';
 import 'package:whatsapp_clone/core/key_management_service.dart';
+import 'package:whatsapp_clone/core/notification_service.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
 
 class AuthService {
@@ -32,7 +33,7 @@ class AuthService {
       print('[AuthService] Generating keypair...');
       final keyPair = await KeyManagementService.ensureKeyPair(registered.uid);
       print('[AuthService] ✓ Keypair generated');
-      
+
       print('[AuthService] Updating user profile with public key...');
       await FirebaseService.updateUserProfile(
         uid: registered.uid,
@@ -46,14 +47,31 @@ class AuthService {
       print('[AuthService] ✓ Saved to SharedPreferences');
       print('[AuthService] ✓✓✓ REGISTRATION COMPLETE ✓✓✓');
 
-      return registered.copyWith(publicKey: keyPair.publicKey);
+      final result = registered.copyWith(publicKey: keyPair.publicKey);
+      NotificationService.setCurrentUserUid(result.uid);
+      
+      // Save FCM token for push notifications
+      try {
+        final fcmToken = await NotificationService.getToken();
+        if (fcmToken != null && fcmToken.isNotEmpty) {
+          await FirebaseService.updateUserProfile(
+            uid: registered.uid,
+            fcmToken: fcmToken,
+          );
+          print('[AuthService] ✓ FCM token saved');
+        }
+      } catch (e) {
+        print('[AuthService] ⚠ Failed to save FCM token: $e');
+      }
+      
+      return result;
     } catch (e, stackTrace) {
       print('[AuthService] ⚠ Firebase registration failed: $e');
       print('[AuthService] Stack trace: $stackTrace');
       // Only create local fallback for network/availability errors
       // If it's an actual error (like validation), rethrow it
-      if (e.toString().contains('email') || 
-          e.toString().contains('password') || 
+      if (e.toString().contains('email') ||
+          e.toString().contains('password') ||
           e.toString().contains('weak-password') ||
           e.toString().contains('email-already-in-use')) {
         print('[AuthService] Auth validation error, rethrowing...');
@@ -83,6 +101,7 @@ class AuthService {
       await prefs.setString(_localUserPrefKey, user.uid);
       await prefs.setString(_localUserNumberPrefKey, localNumber);
       print('[AuthService] ✓ Local user created with number: $localNumber');
+      NotificationService.setCurrentUserUid(user.uid);
       return user;
     }
   }
@@ -109,14 +128,35 @@ class AuthService {
 
     try {
       print('[AuthService] Calling FirebaseService.loginUser...');
-      final user = await FirebaseService.loginUser(email: resolvedEmail, password: password);
+      final user = await FirebaseService.loginUser(
+        email: resolvedEmail,
+        password: password,
+      );
       print('[AuthService] ✓ Login successful!');
       print('[AuthService] User UID: ${user.uid}');
       final keyPair = await KeyManagementService.ensureKeyPair(user.uid);
       if (user.publicKey.isEmpty) {
-        await FirebaseService.updateUserProfile(uid: user.uid, publicKey: keyPair.publicKey);
-        return user.copyWith(publicKey: keyPair.publicKey);
+        await FirebaseService.updateUserProfile(
+          uid: user.uid,
+          publicKey: keyPair.publicKey,
+        );
       }
+      
+      // Save FCM token for push notifications
+      try {
+        final fcmToken = await NotificationService.getToken();
+        if (fcmToken != null && fcmToken.isNotEmpty) {
+          await FirebaseService.updateUserProfile(
+            uid: user.uid,
+            fcmToken: fcmToken,
+          );
+          print('[AuthService] ✓ FCM token saved on login');
+        }
+      } catch (e) {
+        print('[AuthService] ⚠ Failed to save FCM token: $e');
+      }
+      
+      NotificationService.setCurrentUserUid(user.uid);
       return user;
     } catch (_) {
       final prefs = await SharedPreferences.getInstance();
@@ -128,7 +168,7 @@ class AuthService {
       }
 
       final keyPair = await KeyManagementService.ensureKeyPair(savedUid);
-      return UserModel(
+      final user = UserModel(
         uid: savedUid,
         uniqueNumber: savedNumber,
         email: resolvedEmail,
@@ -141,6 +181,8 @@ class AuthService {
         createdAt: DateTime.now().subtract(const Duration(hours: 24)),
         lastUpdated: DateTime.now(),
       );
+      NotificationService.setCurrentUserUid(user.uid);
+      return user;
     }
   }
 
@@ -148,7 +190,9 @@ class AuthService {
     try {
       final firebaseUser = await FirebaseService.getCurrentUser();
       if (firebaseUser != null) {
-        final keyPair = await KeyManagementService.ensureKeyPair(firebaseUser.uid);
+        final keyPair = await KeyManagementService.ensureKeyPair(
+          firebaseUser.uid,
+        );
         if (firebaseUser.publicKey.isEmpty) {
           await FirebaseService.updateUserProfile(
             uid: firebaseUser.uid,
@@ -192,6 +236,8 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_localUserPrefKey);
     await prefs.remove(_localUserNumberPrefKey);
+    NotificationService.setCurrentUserUid(null);
+    NotificationService.clearActiveChat();
   }
 
   static Future<UserModel?> getUserByNumber(String number) async {

@@ -7,6 +7,7 @@ class UserModel {
   final String profilePic;
   final String status;
   final String publicKey;
+  final String fcmToken;
   final DateTime lastSeen;
   final bool isOnline;
   final DateTime createdAt;
@@ -20,6 +21,7 @@ class UserModel {
     this.profilePic = '',
     this.status = 'Available',
     this.publicKey = '',
+    this.fcmToken = '',
     DateTime? lastSeen,
     this.isOnline = false,
     DateTime? createdAt,
@@ -37,6 +39,7 @@ class UserModel {
         'profilePic': profilePic,
         'status': status,
         'publicKey': publicKey,
+        'fcmToken': fcmToken,
         'lastSeen': lastSeen,
         'isOnline': isOnline,
         'createdAt': createdAt,
@@ -52,6 +55,7 @@ class UserModel {
         profilePic: json['profilePic'] as String? ?? '',
         status: json['status'] as String? ?? 'Available',
         publicKey: json['publicKey'] as String? ?? '',
+        fcmToken: json['fcmToken'] as String? ?? '',
         lastSeen: (json['lastSeen'] as dynamic)?.toDate() ?? DateTime.now(),
         isOnline: json['isOnline'] as bool? ?? false,
         createdAt: (json['createdAt'] as dynamic)?.toDate() ?? DateTime.now(),
@@ -67,6 +71,7 @@ class UserModel {
     String? profilePic,
     String? status,
     String? publicKey,
+    String? fcmToken,
     DateTime? lastSeen,
     bool? isOnline,
     DateTime? createdAt,
@@ -80,6 +85,7 @@ class UserModel {
         profilePic: profilePic ?? this.profilePic,
         status: status ?? this.status,
         publicKey: publicKey ?? this.publicKey,
+        fcmToken: fcmToken ?? this.fcmToken,
         lastSeen: lastSeen ?? this.lastSeen,
         isOnline: isOnline ?? this.isOnline,
         createdAt: createdAt ?? this.createdAt,

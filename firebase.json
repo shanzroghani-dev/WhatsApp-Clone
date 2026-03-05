@@ -1,1 +1,27 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"whatsapp-clone-325fe","appId":"1:92294274359:android:c2d1e8e6863a17ce3b8eb2","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"whatsapp-clone-325fe","configurations":{"ios":"1:92294274359:ios:6cd4af8b11c2564c3b8eb2"}}}}}}
+{
+	"database": {
+		"rules": "database.rules.json"
+	},
+	"functions": {
+		"source": "functions"
+	},
+	"flutter": {
+		"platforms": {
+			"android": {
+				"default": {
+					"projectId": "whatsapp-clone-325fe",
+					"appId": "1:92294274359:android:c2d1e8e6863a17ce3b8eb2",
+					"fileOutput": "android/app/google-services.json"
+				}
+			},
+			"dart": {
+				"lib/firebase_options.dart": {
+					"projectId": "whatsapp-clone-325fe",
+					"configurations": {
+						"ios": "1:92294274359:ios:6cd4af8b11c2564c3b8eb2"
+					}
+				}
+			}
+		}
+	}
+}

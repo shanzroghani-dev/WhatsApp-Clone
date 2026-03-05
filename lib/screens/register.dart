@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/auth/auth_service.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
+import 'package:whatsapp_clone/core/notification_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -9,7 +10,8 @@ class RegisterScreen extends StatefulWidget {
   State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProviderStateMixin {
+class _RegisterScreenState extends State<RegisterScreen>
+    with SingleTickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _displayNameController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -32,10 +34,10 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
     );
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeOut));
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
+          CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
+        );
     _animationController.forward();
   }
 
@@ -79,14 +81,19 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
         password: password,
         displayName: displayName.isEmpty ? null : displayName,
       );
+      NotificationService.setCurrentUserUid(created.uid);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Account created. Your chat number is ${created.uniqueNumber}'),
+          content: Text(
+            'Account created. Your chat number is ${created.uniqueNumber}',
+          ),
           duration: const Duration(seconds: 4),
           backgroundColor: AppColors.success,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+          ),
         ),
       );
       Navigator.of(context).pushReplacementNamed('/home');
@@ -97,7 +104,9 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
           content: Text('Registration failed: $e'),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+          ),
         ),
       );
       setState(() => _loading = false);
@@ -125,7 +134,9 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
           child: SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
             child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: size.height - MediaQuery.of(context).padding.top),
+              constraints: BoxConstraints(
+                minHeight: size.height - MediaQuery.of(context).padding.top,
+              ),
               child: Padding(
                 padding: const EdgeInsets.all(AppSpacing.xl),
                 child: FadeTransition(
@@ -137,7 +148,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         const SizedBox(height: AppSpacing.xxxl),
-                        
+
                         // Back Button
                         Align(
                           alignment: Alignment.centerLeft,
@@ -145,13 +156,15 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                             onPressed: () => Navigator.of(context).pop(),
                             icon: Icon(
                               Icons.arrow_back,
-                              color: isDark ? AppColors.darkText : AppColors.lightText,
+                              color: isDark
+                                  ? AppColors.darkText
+                                  : AppColors.lightText,
                             ),
                           ),
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.xl),
-                        
+
                         // Logo with gradient
                         Center(
                           child: Container(
@@ -171,31 +184,35 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                             ),
                           ),
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.xxxl),
-                        
+
                         // Title
                         Text(
                           'Create Account',
                           style: theme.textTheme.displaySmall?.copyWith(
                             fontWeight: FontWeight.w800,
-                            color: isDark ? AppColors.darkText : AppColors.lightText,
+                            color: isDark
+                                ? AppColors.darkText
+                                : AppColors.lightText,
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.sm),
-                        
+
                         Text(
                           'Sign up to start chatting with friends',
                           style: theme.textTheme.bodyLarge?.copyWith(
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            color: isDark
+                                ? AppColors.darkTextSecondary
+                                : AppColors.lightTextSecondary,
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.xxxl * 1.5),
-                        
+
                         // Email Field
                         _buildModernTextField(
                           controller: _emailController,
@@ -206,9 +223,9 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                           keyboardType: TextInputType.emailAddress,
                           isDark: isDark,
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.xl),
-                        
+
                         // Display Name Field
                         _buildModernTextField(
                           controller: _displayNameController,
@@ -218,20 +235,25 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                           error: _displayNameError,
                           isDark: isDark,
                         ),
-                        
+
                         Padding(
-                          padding: const EdgeInsets.only(top: AppSpacing.sm, left: AppSpacing.sm),
+                          padding: const EdgeInsets.only(
+                            top: AppSpacing.sm,
+                            left: AppSpacing.sm,
+                          ),
                           child: Text(
                             'A unique chat number will be assigned automatically',
                             style: TextStyle(
                               fontSize: 12,
-                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                              color: isDark
+                                  ? AppColors.darkTextSecondary
+                                  : AppColors.lightTextSecondary,
                             ),
                           ),
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.xl),
-                        
+
                         // Password Field
                         _buildModernTextField(
                           controller: _passwordController,
@@ -243,15 +265,21 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                           isDark: isDark,
                           suffixIcon: IconButton(
                             icon: Icon(
-                              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                              _obscurePassword
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                              color: isDark
+                                  ? AppColors.darkTextSecondary
+                                  : AppColors.lightTextSecondary,
                             ),
-                            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                            onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
                           ),
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.xxxl),
-                        
+
                         // Register Button - Gradient
                         Container(
                           height: 56,
@@ -268,7 +296,9 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                               backgroundColor: Colors.transparent,
                               shadowColor: Colors.transparent,
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(AppRadius.sm),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.sm,
+                                ),
                               ),
                             ),
                             child: _loading
@@ -291,9 +321,9 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                   ),
                           ),
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.xxxl),
-                        
+
                         // Login Link
                         Center(
                           child: Row(
@@ -302,7 +332,9 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                               Text(
                                 'Already have an account? ',
                                 style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                  color: isDark
+                                      ? AppColors.darkTextSecondary
+                                      : AppColors.lightTextSecondary,
                                 ),
                               ),
                               GestureDetector(
@@ -312,14 +344,16 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w700,
-                                    color: isDark ? AppColors.accent : AppColors.primary,
+                                    color: isDark
+                                        ? AppColors.accent
+                                        : AppColors.primary,
                                   ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        
+
                         const SizedBox(height: AppSpacing.xxxl),
                       ],
                     ),
@@ -345,7 +379,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     Widget? suffixIcon,
   }) {
     final theme = Theme.of(context);
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -365,8 +399,8 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
               color: error != null
                   ? AppColors.error
                   : isDark
-                      ? Colors.white10
-                      : Colors.black.withOpacity(0.1),
+                  ? Colors.white10
+                  : Colors.black.withOpacity(0.1),
               width: 1.5,
             ),
             boxShadow: error == null ? AppShadows.subtleList : null,
@@ -385,7 +419,9 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
               ),
               prefixIcon: Icon(
                 icon,
-                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                color: isDark
+                    ? AppColors.darkTextSecondary
+                    : AppColors.lightTextSecondary,
               ),
               suffixIcon: suffixIcon,
               border: InputBorder.none,
@@ -398,7 +434,10 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
         ),
         if (error != null)
           Padding(
-            padding: const EdgeInsets.only(top: AppSpacing.sm, left: AppSpacing.sm),
+            padding: const EdgeInsets.only(
+              top: AppSpacing.sm,
+              left: AppSpacing.sm,
+            ),
             child: Row(
               children: [
                 const Icon(
