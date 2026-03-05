@@ -89,7 +89,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
         ),
       );
-      Navigator.of(context).pushReplacementNamed('/chats');
+      Navigator.of(context).pushReplacementNamed('/home');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

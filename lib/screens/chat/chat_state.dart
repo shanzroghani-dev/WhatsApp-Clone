@@ -35,10 +35,7 @@ class ChatScreenState extends State<ChatScreen>
   static const int _pageSize = 30;
   bool _isLoadingMore = false;
   bool _hasMoreMessages = false;
-  final Set<String> _uploadingMessageIds = <String>{};
   final Set<String> _downloadingMessageIds = <String>{};
-  final Map<String, String> _cachedAttachmentPaths = <String, String>{};
-  final Map<String, String> _videoThumbnailPaths = <String, String>{};
   String? _attachmentCacheDirPath;
   bool _isInitialized = false; // Track if didChangeDependencies has run
 
@@ -98,13 +95,16 @@ class ChatScreenState extends State<ChatScreen>
   double get recordingSlideOffset => recordingProvider.recordingSlideOffset;
 
   @override
-  bool get recordingCancelTriggered => recordingProvider.recordingCancelTriggered;
+  bool get recordingCancelTriggered =>
+      recordingProvider.recordingCancelTriggered;
 
   @override
-  Map<String, String> get cachedAttachmentPaths => uploadProvider.cachedAttachmentPaths;
+  Map<String, String> get cachedAttachmentPaths =>
+      uploadProvider.cachedAttachmentPaths;
 
   @override
-  Map<String, String> get videoThumbnailPaths => uploadProvider.videoThumbnailPaths;
+  Map<String, String> get videoThumbnailPaths =>
+      uploadProvider.videoThumbnailPaths;
 
   @override
   TextEditingController get messageController => _messageController;
@@ -129,15 +129,30 @@ class ChatScreenState extends State<ChatScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     // Cache provider references for safe access in dispose()
-    _recordingProvider = Provider.of<RecordingStateNotifier>(context, listen: false);
+    _recordingProvider = Provider.of<RecordingStateNotifier>(
+      context,
+      listen: false,
+    );
     _mediaProvider = Provider.of<MediaStateNotifier>(context, listen: false);
     _uploadProvider = Provider.of<UploadStateNotifier>(context, listen: false);
-    _messagesProvider = Provider.of<MessagesStateNotifier>(context, listen: false);
-    
+    _messagesProvider = Provider.of<MessagesStateNotifier>(
+      context,
+      listen: false,
+    );
+
     // Only run initialization once
     if (!_isInitialized) {
       _isInitialized = true;
-      
+
+      // Set up callback for temp message insertion (only once)
+      _messagesProvider.setOnTempMessageInserted(() {
+        if (mounted) {
+          setState(() {
+            // Force immediate rebuild when temp message is inserted
+          });
+        }
+      });
+
       // Load messages only if provider hasn't loaded from local DB yet
       if (!messagesProvider.initialLoadComplete) {
         _loadMessages(scrollToBottom: true);
@@ -184,6 +199,10 @@ class ChatScreenState extends State<ChatScreen>
     _messageController.dispose();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+
+    // Clear temp message callback
+    _messagesProvider.setOnTempMessageInserted(null);
+
     super.dispose();
   }
 
@@ -217,8 +236,11 @@ class ChatScreenState extends State<ChatScreen>
               );
               if (existingIndex != -1) {
                 messagesProvider.updateMessage(newMessage);
+                setState(() {}); // Force rebuild for incoming updates
               } else {
-                messagesProvider.insertMessage(newMessage);
+                insertMessage(
+                  newMessage,
+                ); // Use override that includes setState()
               }
             }
           }
@@ -287,8 +309,17 @@ class ChatScreenState extends State<ChatScreen>
       delivered: false,
     );
 
-    messagesProvider.insertMessage(tempMessage);
+    insertMessage(tempMessage); // Use override that includes setState()
     _messageController.clear();
+
+    unawaited(
+      ChatService.upsertLocalChatPreview(
+        ownerUID: widget.currentUser.uid,
+        peerUID: widget.peer.uid,
+        text: text,
+        timestamp: tempMessage.timestamp,
+      ),
+    );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -315,11 +346,11 @@ class ChatScreenState extends State<ChatScreen>
       await _loadMessages(scrollToBottom: false);
 
       if (mounted) {
-        messagesProvider.removeMessage(tempMessageId);
+        removeMessage(tempMessageId); // Use override that includes setState()
       }
     } catch (e) {
       if (mounted) {
-        messagesProvider.removeMessage(tempMessageId);
+        removeMessage(tempMessageId); // Use override that includes setState()
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Failed to send message')));
@@ -373,17 +404,15 @@ class ChatScreenState extends State<ChatScreen>
   @override
   void addUploadingMessageId(String id) {
     if (!mounted) return;
-    setState(() {
-      _uploadingMessageIds.add(id);
-    });
+    uploadProvider.addUploadingMessageId(id);
+    setState(() {});
   }
 
   @override
   void removeUploadingMessageId(String id) {
     if (!mounted) return;
-    setState(() {
-      _uploadingMessageIds.remove(id);
-    });
+    uploadProvider.removeUploadingMessageId(id);
+    setState(() {});
   }
 
   @override
@@ -397,39 +426,36 @@ class ChatScreenState extends State<ChatScreen>
   @override
   void updateCachedAttachmentPath(String key, String path) {
     if (!mounted) return;
-    setState(() {
-      _cachedAttachmentPaths[key] = path;
-    });
+    uploadProvider.updateCachedAttachmentPath(key, path);
+    setState(() {});
   }
 
   @override
   void updateVideoThumbnailPath(String key, String path) {
     if (!mounted) return;
-    setState(() {
-      _videoThumbnailPaths[key] = path;
-    });
+    uploadProvider.updateVideoThumbnailPath(key, path);
+    setState(() {});
   }
 
   @override
   void removeVideoThumbnailPath(String key) {
     if (!mounted) return;
-    setState(() {
-      _videoThumbnailPaths.remove(key);
-    });
+    uploadProvider.removeVideoThumbnailPath(key);
+    setState(() {});
   }
 
   @override
   void removeCachedAttachmentPath(String key) {
     if (!mounted) return;
-    setState(() {
-      _cachedAttachmentPaths.remove(key);
-    });
+    uploadProvider.removeCachedAttachmentPath(key);
+    setState(() {});
   }
 
   @override
   void removeMessage(String id) {
     if (!mounted) return;
     messagesProvider.removeMessage(id);
+    setState(() {}); // Force rebuild when message removed
   }
 
   @override
@@ -484,14 +510,14 @@ class ChatScreenState extends State<ChatScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     // Watch providers to rebuild when state changes
     final messagesState = context.watch<MessagesStateNotifier>();
     final recordingState = context.watch<RecordingStateNotifier>();
     final mediaState = context.watch<MediaStateNotifier>();
-    
+
     final visibleMessages = messagesState.visibleMessages;
-    
+
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
@@ -703,7 +729,8 @@ class ChatScreenState extends State<ChatScreen>
   /// - Double tick: Message delivered
   Widget _buildMessageStatusIcon(MessageModel message) {
     // Check if message is still pending/uploading
-    final isPending = uploadProvider.uploadingMessageIds.contains(message.id) ||
+    final isPending =
+        uploadProvider.uploadingMessageIds.contains(message.id) ||
         message.id.startsWith('temp_') ||
         message.id.startsWith('uploading_');
 

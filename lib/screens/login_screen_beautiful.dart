@@ -68,7 +68,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     try {
       await AuthService.loginUser(email: email, password: password);
       if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed('/chats');
+      Navigator.of(context).pushReplacementNamed('/home');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

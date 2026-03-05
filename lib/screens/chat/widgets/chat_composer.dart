@@ -94,14 +94,18 @@ class ChatComposer extends StatelessWidget {
                       size: 18,
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      'Recording... ${_formatDuration(recordingDuration)}',
-                      style: TextStyle(
-                        color: isDark
-                            ? AppColors.darkText
-                            : AppColors.lightText,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
+                    Flexible(
+                      child: Text(
+                        'Recording... ${_formatDuration(recordingDuration)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: isDark
+                              ? AppColors.darkText
+                              : AppColors.lightText,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),

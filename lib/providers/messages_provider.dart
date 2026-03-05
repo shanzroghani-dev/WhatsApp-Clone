@@ -4,7 +4,8 @@ import 'package:whatsapp_clone/models/message_model.dart';
 
 /// Global manager for Messages providers (one per chat conversation)
 class MessagesProviderManager {
-  static final MessagesProviderManager _instance = MessagesProviderManager._internal();
+  static final MessagesProviderManager _instance =
+      MessagesProviderManager._internal();
   factory MessagesProviderManager() => _instance;
   MessagesProviderManager._internal();
 
@@ -12,7 +13,11 @@ class MessagesProviderManager {
 
   /// Get or create a messages provider for a specific chat
   /// Loads messages from local DB immediately if creating new provider
-  MessagesStateNotifier getProvider(String chatKey, String userId1, String userId2) {
+  MessagesStateNotifier getProvider(
+    String chatKey,
+    String userId1,
+    String userId2,
+  ) {
     if (!_providers.containsKey(chatKey)) {
       final provider = MessagesStateNotifier();
       _providers[chatKey] = provider;
@@ -49,11 +54,19 @@ class MessagesStateNotifier extends ChangeNotifier {
   int _visibleCount = 0;
   bool _initialLoadComplete = false;
 
+  // Callback for temp message insertion
+  VoidCallback? _onTempMessageInserted;
+
   // Getters
   List<MessageModel> get messages => _messages;
   int get visibleCount => _visibleCount;
   bool get initialLoadComplete => _initialLoadComplete;
-  
+
+  /// Set callback to be called when temp message is inserted
+  void setOnTempMessageInserted(VoidCallback? callback) {
+    _onTempMessageInserted = callback;
+  }
+
   List<MessageModel> get visibleMessages {
     return _messages.take(_visibleCount).toList();
   }
@@ -73,32 +86,46 @@ class MessagesStateNotifier extends ChangeNotifier {
 
   // Setters
   void setMessages(List<MessageModel> messages) {
-    // Preserve any temporary/pending messages (not yet in database)
-    final pendingMessages = _messages.where((m) => 
-      m.id.startsWith('temp_') || m.id.startsWith('uploading_')
-    ).toList();
-    
-    // Filter out any DB messages that duplicate pending messages
-    final filteredMessages = messages.where((m) => 
-      !pendingMessages.any((pm) => pm.id == m.id)
-    ).toList();
-    
-    // Merge: pending messages first (newest), then database messages
-    _messages = [...pendingMessages, ...filteredMessages];
+    // Preserve temporary/pending messages that are not yet in database.
+    final databaseIds = messages.map((m) => m.id).toSet();
+    final pendingMessages = _messages.where((m) {
+      final isPending =
+          m.id.startsWith('temp_') || m.id.startsWith('uploading_');
+      return isPending && !databaseIds.contains(m.id);
+    }).toList();
+
+    // Keep a stable ascending timeline (oldest -> newest).
+    final merged = [...messages, ...pendingMessages]
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    _messages = merged;
     _visibleCount = _messages.length;
     _initialLoadComplete = true;
     notifyListeners();
   }
 
   void insertMessage(MessageModel message) {
-    _messages.insert(0, message);
+    _messages.add(message);
+    _messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
     _visibleCount = (_visibleCount + 1).clamp(0, _messages.length);
+
+    // Check if this is a temp message and call callback immediately
+    if (message.id.startsWith('temp_') || message.id.startsWith('uploading_')) {
+      _onTempMessageInserted?.call();
+    }
+
     notifyListeners();
   }
 
   void removeMessage(String id) {
-    _messages.removeWhere((m) => m.id == id);
-    _visibleCount = (_visibleCount - 1).clamp(0, _messages.length);
+    final removedIndex = _messages.indexWhere((m) => m.id == id);
+    if (removedIndex == -1) return;
+
+    _messages.removeAt(removedIndex);
+    // Only decrement visible count if removed message was visible
+    if (removedIndex < _visibleCount) {
+      _visibleCount = (_visibleCount - 1).clamp(0, _messages.length);
+    }
     notifyListeners();
   }
 

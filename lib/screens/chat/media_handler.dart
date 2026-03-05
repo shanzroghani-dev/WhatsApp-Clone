@@ -124,6 +124,16 @@ mixin MediaHandler {
       uploadProvider.addUploadingMessageId(tempMessageId);
       insertMessage(tempMessage);
       uploadProvider.updateCachedAttachmentPath(tempMessageId, previewPath);
+
+      unawaited(
+        ChatService.upsertLocalChatPreview(
+          ownerUID: currentUserId,
+          peerUID: peerUserId,
+          text: tempMessage.text,
+          timestamp: tempMessage.timestamp,
+        ),
+      );
+
       mediaProvider.clear();
       messageController.clear();
 
@@ -170,7 +180,7 @@ mixin MediaHandler {
         final thumbnailFile = File(thumbnailPath);
         await thumbnailFile.writeAsBytes(thumbnailBytes, flush: true);
         if (mounted) {
-          uploadProvider.updateVideoThumbnailPath(tempMessageId, thumbnailPath);
+          updateVideoThumbnailPath(tempMessageId, thumbnailPath);
         }
       }
 
@@ -218,17 +228,11 @@ mixin MediaHandler {
           );
           try {
             await oldFile.rename(newThumbnailPath);
-            uploadProvider.updateVideoThumbnailPath(
-              realMessage.id,
-              newThumbnailPath,
-            );
-            uploadProvider.removeVideoThumbnailPath(tempMessageId);
+            updateVideoThumbnailPath(realMessage.id, newThumbnailPath);
+            removeVideoThumbnailPath(tempMessageId);
           } catch (e) {
-            uploadProvider.updateVideoThumbnailPath(
-              realMessage.id,
-              oldThumbnailPath,
-            );
-            uploadProvider.removeVideoThumbnailPath(tempMessageId);
+            updateVideoThumbnailPath(realMessage.id, oldThumbnailPath);
+            removeVideoThumbnailPath(tempMessageId);
           }
         }
       }
@@ -236,8 +240,7 @@ mixin MediaHandler {
       if (mounted) {
         uploadProvider.removeUploadingMessageId(tempMessageId);
         if (uploadProvider.cachedAttachmentPaths.containsKey(tempMessageId)) {
-          final tempPath =
-              uploadProvider.cachedAttachmentPaths[tempMessageId]!;
+          final tempPath = uploadProvider.cachedAttachmentPaths[tempMessageId]!;
           uploadProvider.updateCachedAttachmentPath(realMessage.id, tempPath);
           uploadProvider.removeCachedAttachmentPath(tempMessageId);
         }
@@ -354,9 +357,8 @@ mixin MediaHandler {
     required Map<String, dynamic> attachment,
   }) async {
     if (downloadingMessageIds.contains(message.id)) return null;
-    setState(() {
-      (this as dynamic)._downloadingMessageIds.add(message.id);
-    });
+    downloadingMessageIds.add(message.id);
+    setState(() {});
 
     try {
       final bytes = await ChatService.downloadAttachmentAndDeleteFromStorage(
@@ -386,18 +388,13 @@ mixin MediaHandler {
           final thumbnailFile = File(thumbnailPath);
           await thumbnailFile.writeAsBytes(thumbnailData, flush: true);
           if (mounted) {
-            setState(() {
-              (this as dynamic)._videoThumbnailPaths[message.id] =
-                  thumbnailPath;
-            });
+            updateVideoThumbnailPath(message.id, thumbnailPath);
           }
         }
       }
 
       if (!mounted) return null;
-      setState(() {
-        (this as dynamic)._cachedAttachmentPaths[message.id] = savePath;
-      });
+      updateCachedAttachmentPath(message.id, savePath);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Downloaded: $fileName')));
@@ -410,9 +407,8 @@ mixin MediaHandler {
       return null;
     } finally {
       if (mounted) {
-        setState(() {
-          (this as dynamic)._downloadingMessageIds.remove(message.id);
-        });
+        downloadingMessageIds.remove(message.id);
+        setState(() {});
       }
     }
   }

@@ -316,6 +316,22 @@ class ChatService {
     await LocalDBService.deleteMessage(messageId);
   }
 
+  static Future<void> upsertLocalChatPreview({
+    required String ownerUID,
+    required String peerUID,
+    required String text,
+    int? timestamp,
+  }) async {
+    final resolvedTimestamp =
+        timestamp ?? DateTime.now().millisecondsSinceEpoch;
+    await LocalDBService.upsertChatListEntry(
+      ownerUID: ownerUID,
+      peerUID: peerUID,
+      lastMessage: _chatListPreviewText(text),
+      lastTimestamp: resolvedTimestamp,
+    );
+  }
+
   static Future<void> deleteConversation(String userId1, String userId2) async {
     await LocalDBService.deleteConversation(userId1, userId2);
     await LocalDBService.removeChatListEntry(userId1, userId2);

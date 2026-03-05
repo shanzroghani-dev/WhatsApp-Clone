@@ -71,16 +71,42 @@ mixin VoiceMessageHandler {
     return '$minutes:$seconds';
   }
 
+  void _resetRecordingState() {
+    recordingTimer?.cancel();
+    recordingProvider.setRecordingTimer(null);
+    recordingProvider.setIsRecording(false);
+    recordingProvider.setRecordingDuration(Duration.zero);
+    recordingProvider.setRecordingSlideOffset(0);
+    recordingProvider.setRecordingCancelTriggered(false);
+  }
+
   /// Start voice recording
   Future<void> startVoiceRecording() async {
     if (isRecordingVoice) return;
 
     try {
+      final permissionCheckStartedAt = DateTime.now();
       final hasPermission = await audioRecorder.hasPermission();
+      final permissionCheckElapsed = DateTime.now().difference(
+        permissionCheckStartedAt,
+      );
+
       if (!hasPermission) {
         if (!mounted) return;
+        _resetRecordingState();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Microphone permission is required')),
+        );
+        return;
+      }
+
+      if (permissionCheckElapsed > const Duration(milliseconds: 700)) {
+        if (!mounted) return;
+        _resetRecordingState();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Permission granted. Press and hold again to record'),
+          ),
         );
         return;
       }
@@ -101,7 +127,7 @@ mixin VoiceMessageHandler {
         path: filePath,
       );
 
-      recordingTimer?.cancel();
+      _resetRecordingState();
       recordingProvider.setRecordingTimer(
         Timer.periodic(const Duration(seconds: 1), (_) {
           if (!mounted || !isRecordingVoice) return;
@@ -116,6 +142,7 @@ mixin VoiceMessageHandler {
       recordingProvider.setRecordingDuration(Duration.zero);
     } catch (_) {
       if (!mounted) return;
+      _resetRecordingState();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not start recording')),
       );
@@ -126,35 +153,35 @@ mixin VoiceMessageHandler {
   Future<void> cancelVoiceRecording() async {
     if (!isRecordingVoice) return;
 
-    recordingTimer?.cancel();
-    final path = await audioRecorder.stop();
-    if (path != null) {
-      final file = File(path);
-      if (await file.exists()) {
-        await file.delete();
+    try {
+      final path = await audioRecorder.stop();
+      if (path != null) {
+        final file = File(path);
+        if (await file.exists()) {
+          await file.delete();
+        }
       }
-    }
+    } catch (_) {}
 
     if (!mounted) return;
-    setIsRecordingVoice(false);
-    setRecordingDuration(Duration.zero);
-    setRecordingSlideOffset(0);
-    setRecordingCancelTriggered(false);
+    _resetRecordingState();
   }
 
   /// Stop recording and send voice message
   Future<void> stopAndSendVoiceRecording() async {
     if (!isRecordingVoice) return;
 
-    recordingTimer?.cancel();
-    final path = await audioRecorder.stop();
+    String? path;
+    try {
+      path = await audioRecorder.stop();
+    } catch (_) {
+      path = null;
+    }
+
     final duration = recordingDuration;
 
     if (!mounted) return;
-    recordingProvider.setIsRecording(false);
-    recordingProvider.setRecordingDuration(Duration.zero);
-    recordingProvider.setRecordingSlideOffset(0);
-    recordingProvider.setRecordingCancelTriggered(false);
+    _resetRecordingState();
 
     if (path == null || duration.inSeconds <= 0) {
       return;
@@ -229,6 +256,15 @@ mixin VoiceMessageHandler {
       insertMessage(tempMessage);
       updateCachedAttachmentPath(tempMessageId, filePath);
 
+      unawaited(
+        ChatService.upsertLocalChatPreview(
+          ownerUID: currentUserId,
+          peerUID: peerUserId,
+          text: tempMessage.text,
+          timestamp: tempMessage.timestamp,
+        ),
+      );
+
       // Scroll to show new message
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (scrollController.hasClients) {
@@ -237,12 +273,14 @@ mixin VoiceMessageHandler {
       });
 
       // Send in background
-      unawaited(_sendVoiceInBackground(
-        file: file,
-        fileName: fileName,
-        duration: duration,
-        tempMessageId: tempMessageId,
-      ));
+      unawaited(
+        _sendVoiceInBackground(
+          file: file,
+          fileName: fileName,
+          duration: duration,
+          tempMessageId: tempMessageId,
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       uploadProvider.removeUploadingMessageId(tempMessageId);
