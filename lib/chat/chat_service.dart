@@ -420,22 +420,35 @@ class ChatService {
       throw Exception('Only the sender can delete this message for everyone');
     }
 
+    // Must have remoteId to delete from Firebase
+    if (remoteId == null || remoteId.isEmpty) {
+      throw Exception('Cannot delete: message does not have a Firebase ID (remoteId is null)');
+    }
+
+    print('[ChatService] Deleting for everyone: messageId=$messageId, remoteId=$remoteId');
+
     // Delete from Firebase using remoteId
-    final idToDelete = remoteId ?? messageId;
     try {
-      await FirebaseService.deleteMessageFromCloud(idToDelete);
-      print('[ChatService] Deleted message from cloud: $idToDelete');
+      await FirebaseService.deleteMessageFromCloud(remoteId);
+      print('[ChatService] ✓ Deleted from Firebase: $remoteId');
     } catch (e) {
-      print('[ChatService] Error deleting from cloud: $e');
+      print('[ChatService] ✗ Error deleting from Firebase: $e');
       rethrow;
     }
 
     // Delete from local database
-    await LocalDBService.deleteMessage(messageId);
-    
-    // Also delete by remoteId if different from messageId
-    if (remoteId != null && remoteId != messageId) {
-      await LocalDBService.deleteMessageByRemoteId(remoteId);
+    try {
+      await LocalDBService.deleteMessage(messageId);
+      print('[ChatService] ✓ Deleted from local DB: $messageId');
+      
+      // Also delete by remoteId if different
+      if (remoteId != messageId) {
+        await LocalDBService.deleteMessageByRemoteId(remoteId);
+        print('[ChatService] ✓ Deleted by remoteId: $remoteId');
+      }
+    } catch (e) {
+      print('[ChatService] ✗ Error deleting locally: $e');
+      rethrow;
     }
   }
 

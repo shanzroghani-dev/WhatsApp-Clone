@@ -1076,6 +1076,14 @@ class ChatScreenState extends State<ChatScreen>
   /// Delete message for everyone (only if sender)
   Future<void> _deleteMessageForEveryone(MessageModel message) async {
     try {
+      // Log what we're deleting
+      print('[ChatScreen] Deleting for everyone: id=${message.id}, remoteId=${message.remoteId}, fromId=${message.fromId}');
+      
+      // Must have remoteId to delete from Firebase
+      if (message.remoteId == null) {
+        throw Exception('Cannot delete: message does not have a Firebase ID');
+      }
+
       await ChatService.deleteMessageForEveryone(
         message.id,
         remoteId: message.remoteId,
@@ -1083,8 +1091,11 @@ class ChatScreenState extends State<ChatScreen>
         messageFromId: message.fromId,
       );
 
+      print('[ChatScreen] Successfully deleted message for everyone');
+
       // Remove from provider/state
-      if (mounted) {        final messagesProvider = context.read<MessagesStateNotifier>();
+      if (mounted) {
+        final messagesProvider = context.read<MessagesStateNotifier>();
         messagesProvider.removeMessage(message.id);
       }
 
@@ -1094,6 +1105,7 @@ class ChatScreenState extends State<ChatScreen>
         );
       }
     } catch (e) {
+      print('[ChatScreen] Error deleting for everyone: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),
