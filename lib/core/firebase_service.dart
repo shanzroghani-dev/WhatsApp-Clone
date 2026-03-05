@@ -512,4 +512,78 @@ class FirebaseService {
       }
     }
   }
+
+  /// Delete a single message from Firebase (for everyone)
+  static Future<void> deleteMessageFromCloud(String messageId) async {
+    try {
+      await _realtimeDb.ref('messages/$messageId').remove();
+      print('[Firebase] ✓ Deleted message $messageId');
+    } catch (e) {
+      print('[Firebase] Error deleting message $messageId: $e');
+      rethrow;
+    }
+  }
+
+  /// Delete multiple messages from Firebase by their IDs
+  static Future<void> deleteMessagesByIds(List<String> messageIds) async {
+    for (final messageId in messageIds) {
+      try {
+        await _realtimeDb.ref('messages/$messageId').remove();
+      } catch (e) {
+        print('[Firebase] Error deleting message $messageId: $e');
+      }
+    }
+  }
+
+  /// Delete all messages in a conversation from Firebase (for everyone)
+  static Future<void> deleteConversationFromCloud(
+    String userId1,
+    String userId2,
+  ) async {
+    try {
+      // Get all messages between the two users
+      final snapshot1 = await _realtimeDb
+          .ref('messages')
+          .orderByChild('fromId')
+          .equalTo(userId1)
+          .get();
+
+      final snapshot2 = await _realtimeDb
+          .ref('messages')
+          .orderByChild('fromId')
+          .equalTo(userId2)
+          .get();
+
+      final messageIds = <String>[];
+
+      // Filter messages from user1 to user2
+      if (snapshot1.exists && snapshot1.value is Map) {
+        final messages = Map<dynamic, dynamic>.from(snapshot1.value as Map);
+        for (final entry in messages.entries) {
+          final msg = entry.value;
+          if (msg is Map && msg['toId'] == userId2) {
+            messageIds.add(entry.key.toString());
+          }
+        }
+      }
+
+      // Filter messages from user2 to user1
+      if (snapshot2.exists && snapshot2.value is Map) {
+        final messages = Map<dynamic, dynamic>.from(snapshot2.value as Map);
+        for (final entry in messages.entries) {
+          final msg = entry.value;
+          if (msg is Map && msg['toId'] == userId1) {
+            messageIds.add(entry.key.toString());
+          }
+        }
+      }
+
+      // Delete all found messages
+      await deleteMessagesByIds(messageIds);
+      print('[Firebase] ✓ Deleted ${messageIds.length} messages from conversation');
+    } catch (e) {
+      print('[Firebase] Error deleting conversation: $e');
+      rethrow;
+    }
+  }
 }

@@ -402,8 +402,62 @@ class ChatService {
     }
   }
 
-  static Future<void> deleteMessage(String messageId) async {
+  /// Delete message from local database only (Delete for me)
+  static Future<void> deleteMessageForMe(String messageId) async {
     await LocalDBService.deleteMessage(messageId);
+  }
+
+  /// Delete message from Firebase and local database (Delete for everyone)
+  static Future<void> deleteMessageForEveryone(String messageId, {String? remoteId}) async {
+    // Delete from Firebase using remoteId
+    final idToDelete = remoteId ?? messageId;
+    try {
+      await FirebaseService.deleteMessageFromCloud(idToDelete);
+      print('[ChatService] Deleted message from cloud: $idToDelete');
+    } catch (e) {
+      print('[ChatService] Error deleting from cloud: $e');
+      rethrow;
+    }
+
+    // Delete from local database
+    await LocalDBService.deleteMessage(messageId);
+    
+    // Also delete by remoteId if different from messageId
+    if (remoteId != null && remoteId != messageId) {
+      await LocalDBService.deleteMessageByRemoteId(remoteId);
+    }
+  }
+
+  /// Legacy method - defaults to "Delete for me"
+  @Deprecated('Use deleteMessageForMe or deleteMessageForEveryone instead')
+  static Future<void> deleteMessage(String messageId) async {
+    await deleteMessageForMe(messageId);
+  }
+
+  /// Delete entire conversation from local database only (Delete for me)
+  static Future<void> deleteConversationForMe(String userId1, String userId2) async {
+    await LocalDBService.deleteConversation(userId1, userId2);
+    await LocalDBService.removeChatListEntry(userId1, userId2);
+  }
+
+  /// Delete entire conversation from Firebase and local database (Delete for everyone)
+  static Future<void> deleteConversationForEveryone(String userId1, String userId2) async {
+    try {
+      await FirebaseService.deleteConversationFromCloud(userId1, userId2);
+      print('[ChatService] Deleted conversation from cloud');
+    } catch (e) {
+      print('[ChatService] Error deleting conversation from cloud: $e');
+      rethrow;
+    }
+
+    await LocalDBService.deleteConversation(userId1, userId2);
+    await LocalDBService.removeChatListEntry(userId1, userId2);
+  }
+
+  /// Legacy method - defaults to "Delete for me"
+  @Deprecated('Use deleteConversationForMe or deleteConversationForEveryone instead')
+  static Future<void> deleteConversation(String userId1, String userId2) async {
+    await deleteConversationForMe(userId1, userId2);
   }
 
   static Future<void> upsertLocalChatPreview({
@@ -420,11 +474,6 @@ class ChatService {
       lastMessage: _chatListPreviewText(text),
       lastTimestamp: resolvedTimestamp,
     );
-  }
-
-  static Future<void> deleteConversation(String userId1, String userId2) async {
-    await LocalDBService.deleteConversation(userId1, userId2);
-    await LocalDBService.removeChatListEntry(userId1, userId2);
   }
 
   static Future<void> cleanupOldMessages(String receiverUID) async {
@@ -589,6 +638,16 @@ class ChatService {
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Sync deletion: Remove message from local DB if it no longer exists in Firebase
+  static Future<void> syncMessageDeletion(String remoteId) async {
+    try {
+      await LocalDBService.deleteMessageByRemoteId(remoteId);
+      print('[ChatService] Synced deletion of message: $remoteId');
+    } catch (e) {
+      print('[ChatService] Error syncing deletion: $e');
     }
   }
 }

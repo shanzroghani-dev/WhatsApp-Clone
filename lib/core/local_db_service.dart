@@ -431,6 +431,11 @@ class LocalDBService {
     await db.delete(AppConstants.localMessagesTable, where: 'id = ?', whereArgs: [messageId]);
   }
 
+  static Future<void> deleteMessageByRemoteId(String remoteId) async {
+    final db = await _database;
+    await db.delete(AppConstants.localMessagesTable, where: 'remoteId = ?', whereArgs: [remoteId]);
+  }
+
   static Future<void> deleteConversation(String userId1, String userId2) async {
     final db = await _database;
     await db.delete(
