@@ -19,13 +19,18 @@ class LocalDBService {
     final existing = await _secureStorage.read(key: _secureKey);
     if (existing == null) {
       final key = encrypt.Key.fromSecureRandom(AppConstants.aesKeySize);
-      await _secureStorage.write(key: _secureKey, value: base64Encode(key.bytes));
+      await _secureStorage.write(
+        key: _secureKey,
+        value: base64Encode(key.bytes),
+      );
       _aesKey = key;
     } else {
       _aesKey = encrypt.Key(base64Decode(existing));
     }
 
-    _encrypter = encrypt.Encrypter(encrypt.AES(_aesKey, mode: encrypt.AESMode.cbc));
+    _encrypter = encrypt.Encrypter(
+      encrypt.AES(_aesKey, mode: encrypt.AESMode.cbc),
+    );
 
     final databasesPath = await getDatabasesPath();
     final dbPath = join(databasesPath, 'whatsapp_clone.db');
@@ -38,10 +43,18 @@ class LocalDBService {
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
-          await db.execute('ALTER TABLE ${AppConstants.localMessagesTable} ADD COLUMN delivered INTEGER DEFAULT 0');
-          await db.execute('ALTER TABLE ${AppConstants.localMessagesTable} ADD COLUMN synced INTEGER DEFAULT 0');
-          await db.execute('ALTER TABLE ${AppConstants.localMessagesTable} ADD COLUMN remoteId TEXT');
-          await db.execute('ALTER TABLE ${AppConstants.localMessagesTable} ADD COLUMN iv TEXT');
+          await db.execute(
+            'ALTER TABLE ${AppConstants.localMessagesTable} ADD COLUMN delivered INTEGER DEFAULT 0',
+          );
+          await db.execute(
+            'ALTER TABLE ${AppConstants.localMessagesTable} ADD COLUMN synced INTEGER DEFAULT 0',
+          );
+          await db.execute(
+            'ALTER TABLE ${AppConstants.localMessagesTable} ADD COLUMN remoteId TEXT',
+          );
+          await db.execute(
+            'ALTER TABLE ${AppConstants.localMessagesTable} ADD COLUMN iv TEXT',
+          );
           await _createProfileTable(db);
           await _createOutgoingQueueTable(db);
         }
@@ -53,13 +66,21 @@ class LocalDBService {
           print('[LocalDB] Migrating user_profiles: username -> uniqueNumber');
           try {
             // Check if the old column exists
-            final tableInfo = await db.rawQuery('PRAGMA table_info(${AppConstants.localProfilesTable})');
-            final hasUsername = tableInfo.any((col) => col['name'] == 'username');
-            final hasUniqueNumber = tableInfo.any((col) => col['name'] == 'uniqueNumber');
-            
+            final tableInfo = await db.rawQuery(
+              'PRAGMA table_info(${AppConstants.localProfilesTable})',
+            );
+            final hasUsername = tableInfo.any(
+              (col) => col['name'] == 'username',
+            );
+            final hasUniqueNumber = tableInfo.any(
+              (col) => col['name'] == 'uniqueNumber',
+            );
+
             if (hasUsername && !hasUniqueNumber) {
               // Rename column by recreating table
-              await db.execute('ALTER TABLE ${AppConstants.localProfilesTable} RENAME TO _old_profiles');
+              await db.execute(
+                'ALTER TABLE ${AppConstants.localProfilesTable} RENAME TO _old_profiles',
+              );
               await _createProfileTable(db);
               await db.execute('''
                 INSERT INTO ${AppConstants.localProfilesTable} 
@@ -73,7 +94,9 @@ class LocalDBService {
               print('[LocalDB] ✓ Column already named uniqueNumber');
             } else {
               print('[LocalDB] Adding uniqueNumber column');
-              await db.execute('ALTER TABLE ${AppConstants.localProfilesTable} ADD COLUMN uniqueNumber TEXT');
+              await db.execute(
+                'ALTER TABLE ${AppConstants.localProfilesTable} ADD COLUMN uniqueNumber TEXT',
+              );
             }
           } catch (e) {
             print('[LocalDB] Migration error (non-fatal): $e');
@@ -83,7 +106,9 @@ class LocalDBService {
           // Add read column to messages table
           print('[LocalDB] Adding read column to messages table');
           try {
-            await db.execute('ALTER TABLE ${AppConstants.localMessagesTable} ADD COLUMN read INTEGER DEFAULT 0');
+            await db.execute(
+              'ALTER TABLE ${AppConstants.localMessagesTable} ADD COLUMN read INTEGER DEFAULT 0',
+            );
             print('[LocalDB] ✓ Added read column');
           } catch (e) {
             print('[LocalDB] Migration error (non-fatal): $e');
@@ -93,8 +118,12 @@ class LocalDBService {
           // Add deliveredAt and readAt timestamp columns
           print('[LocalDB] Adding deliveredAt and readAt timestamp columns');
           try {
-            await db.execute('ALTER TABLE ${AppConstants.localMessagesTable} ADD COLUMN deliveredAt INTEGER');
-            await db.execute('ALTER TABLE ${AppConstants.localMessagesTable} ADD COLUMN readAt INTEGER');
+            await db.execute(
+              'ALTER TABLE ${AppConstants.localMessagesTable} ADD COLUMN deliveredAt INTEGER',
+            );
+            await db.execute(
+              'ALTER TABLE ${AppConstants.localMessagesTable} ADD COLUMN readAt INTEGER',
+            );
             print('[LocalDB] ✓ Added deliveredAt and readAt columns');
           } catch (e) {
             print('[LocalDB] Migration error (non-fatal): $e');
@@ -180,7 +209,10 @@ class LocalDBService {
     return _db!;
   }
 
-  static Future<List<MessageModel>> messagesBetween(String aId, String bId) async {
+  static Future<List<MessageModel>> messagesBetween(
+    String aId,
+    String bId,
+  ) async {
     final db = await _database;
     final rows = await db.query(
       AppConstants.localMessagesTable,
@@ -283,10 +315,16 @@ class LocalDBService {
 
   static Future<List<Map<String, dynamic>>> getOutgoingQueue() async {
     final db = await _database;
-    return db.query(AppConstants.localOutgoingQueueTable, orderBy: 'createdAt ASC');
+    return db.query(
+      AppConstants.localOutgoingQueueTable,
+      orderBy: 'createdAt ASC',
+    );
   }
 
-  static Future<void> markOutgoingSynced(String localMessageId, {String? remoteId}) async {
+  static Future<void> markOutgoingSynced(
+    String localMessageId, {
+    String? remoteId,
+  }) async {
     final db = await _database;
     await db.delete(
       AppConstants.localOutgoingQueueTable,
@@ -296,10 +334,7 @@ class LocalDBService {
 
     await db.update(
       AppConstants.localMessagesTable,
-      {
-        'synced': 1,
-        if (remoteId != null) 'remoteId': remoteId,
-      },
+      {'synced': 1, if (remoteId != null) 'remoteId': remoteId},
       where: 'id = ?',
       whereArgs: [localMessageId],
     );
@@ -313,7 +348,10 @@ class LocalDBService {
     );
   }
 
-  static Future<void> updateDeliveryStatus(String localMessageId, bool delivered) async {
+  static Future<void> updateDeliveryStatus(
+    String localMessageId,
+    bool delivered,
+  ) async {
     final db = await _database;
     final updates = {
       'delivered': delivered ? 1 : 0,
@@ -327,7 +365,10 @@ class LocalDBService {
     );
   }
 
-  static Future<void> updateDeliveryStatusByRemoteId(String remoteMessageId, bool delivered) async {
+  static Future<void> updateDeliveryStatusByRemoteId(
+    String remoteMessageId,
+    bool delivered,
+  ) async {
     if (remoteMessageId.trim().isEmpty) return;
     final db = await _database;
     final updates = {
@@ -356,7 +397,10 @@ class LocalDBService {
     );
   }
 
-  static Future<void> updateReadStatusByRemoteId(String remoteMessageId, bool read) async {
+  static Future<void> updateReadStatusByRemoteId(
+    String remoteMessageId,
+    bool read,
+  ) async {
     if (remoteMessageId.trim().isEmpty) return;
     final db = await _database;
     final updates = {
@@ -416,24 +460,40 @@ class LocalDBService {
       status: row['status'] as String? ?? 'Available',
       publicKey: row['publicKey'] as String? ?? '',
       isOnline: (row['isOnline'] as int? ?? 0) == 1,
-      lastSeen: DateTime.fromMillisecondsSinceEpoch((row['lastSeen'] as int? ?? 0)),
+      lastSeen: DateTime.fromMillisecondsSinceEpoch(
+        (row['lastSeen'] as int? ?? 0),
+      ),
     );
   }
 
   static Future<void> deleteOldLocalMessages() async {
     final db = await _database;
-    final cutoff = DateTime.now().subtract(AppConstants.messageTTL).millisecondsSinceEpoch;
-    await db.delete(AppConstants.localMessagesTable, where: 'timestamp < ?', whereArgs: [cutoff]);
+    final cutoff = DateTime.now()
+        .subtract(AppConstants.messageTTL)
+        .millisecondsSinceEpoch;
+    await db.delete(
+      AppConstants.localMessagesTable,
+      where: 'timestamp < ?',
+      whereArgs: [cutoff],
+    );
   }
 
   static Future<void> deleteMessage(String messageId) async {
     final db = await _database;
-    await db.delete(AppConstants.localMessagesTable, where: 'id = ?', whereArgs: [messageId]);
+    await db.delete(
+      AppConstants.localMessagesTable,
+      where: 'id = ?',
+      whereArgs: [messageId],
+    );
   }
 
   static Future<void> deleteMessageByRemoteId(String remoteId) async {
     final db = await _database;
-    await db.delete(AppConstants.localMessagesTable, where: 'remoteId = ?', whereArgs: [remoteId]);
+    await db.delete(
+      AppConstants.localMessagesTable,
+      where: 'remoteId = ?',
+      whereArgs: [remoteId],
+    );
   }
 
   static Future<void> deleteConversation(String userId1, String userId2) async {
@@ -450,6 +510,14 @@ class LocalDBService {
     final result = await db.rawQuery(
       'SELECT COUNT(*) as count FROM ${AppConstants.localMessagesTable} WHERE (fromId = ? AND toId = ?) OR (fromId = ? AND toId = ?)',
       [aId, bId, bId, aId],
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  static Future<int> getTotalMessageCount() async {
+    final db = await _database;
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM ${AppConstants.localMessagesTable}',
     );
     return Sqflite.firstIntValue(result) ?? 0;
   }
@@ -474,7 +542,9 @@ class LocalDBService {
     );
   }
 
-  static Future<List<Map<String, dynamic>>> getChatListEntries(String ownerUID) async {
+  static Future<List<Map<String, dynamic>>> getChatListEntries(
+    String ownerUID,
+  ) async {
     final db = await _database;
     return db.query(
       AppConstants.localChatListTable,
@@ -484,7 +554,28 @@ class LocalDBService {
     );
   }
 
-  static Future<void> removeChatListEntry(String ownerUID, String peerUID) async {
+  static Future<int> getChatListCount(String ownerUID) async {
+    final db = await _database;
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM ${AppConstants.localChatListTable} WHERE ownerUID = ?',
+      [ownerUID],
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  static Future<void> clearChatListEntries(String ownerUID) async {
+    final db = await _database;
+    await db.delete(
+      AppConstants.localChatListTable,
+      where: 'ownerUID = ?',
+      whereArgs: [ownerUID],
+    );
+  }
+
+  static Future<void> removeChatListEntry(
+    String ownerUID,
+    String peerUID,
+  ) async {
     final db = await _database;
     await db.delete(
       AppConstants.localChatListTable,

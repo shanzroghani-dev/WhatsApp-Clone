@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:whatsapp_clone/chat/chat_service.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
 import 'package:whatsapp_clone/core/firebase_service.dart';
@@ -37,6 +38,7 @@ class ChatScreenState extends State<ChatScreen>
 
   StreamSubscription<MessageModel>? _incomingSubscription;
   StreamSubscription<Map<String, dynamic>>? _statusSubscription;
+  Timer? _statusRefreshTimer;
   static const int _pageSize = 30;
   bool _isLoadingMore = false;
   bool _hasMoreMessages = false;
@@ -180,11 +182,13 @@ class ChatScreenState extends State<ChatScreen>
       if (_isInitialized) {
         recordingProvider.setPlayingAudioMessageId(null);
       }
-    });    // Sync any missed messages before displaying chat
-    _syncMissedMessages();    initializeAttachmentCacheDir();
+    }); // Sync any missed messages before displaying chat
+    _syncMissedMessages();
+    initializeAttachmentCacheDir();
     _subscribeToIncomingMessages();
     _subscribeToStatusUpdates();
     _listenForMessageDeletions();
+    _startStatusRefreshTimer();
   }
 
   @override
@@ -204,6 +208,7 @@ class ChatScreenState extends State<ChatScreen>
   void dispose() {
     NotificationService.clearActiveChat(peerUid: widget.peer.uid);
     recordingProvider.recordingTimer?.cancel();
+    _statusRefreshTimer?.cancel();
     unawaited(_audioRecorder.dispose());
     unawaited(_audioPlayer.dispose());
     _incomingSubscription?.cancel();
@@ -255,12 +260,10 @@ class ChatScreenState extends State<ChatScreen>
                   newMessage,
                 ); // Use override that includes setState()
               }
-              
+
               // Mark incoming messages as delivered and read
               if (newMessage.fromId == widget.peer.uid) {
-                _markMessageAsDeliveredAndRead(
-                  messageId: newMessage.id,
-                );
+                _markMessageAsDeliveredAndRead(messageId: newMessage.id);
               }
             }
           }
@@ -269,42 +272,91 @@ class ChatScreenState extends State<ChatScreen>
 
   /// Subscribe to status updates for messages sent by current user
   void _subscribeToStatusUpdates() {
-    _statusSubscription = FirebaseService.listenForStatusUpdates(
-      widget.currentUser.uid,
-    ).listen((statusUpdate) {
-      if (!mounted) return;
-      
-      final messageId = statusUpdate['messageId'] as String?;
-      final localMessageId = statusUpdate['localMessageId'] as String?;
-      final delivered = statusUpdate['delivered'] as bool? ?? false;
-      final read = statusUpdate['read'] as bool? ?? false;
-      
-      if (messageId == null && localMessageId == null) return;
+    _statusSubscription =
+        FirebaseService.listenForStatusUpdates(widget.currentUser.uid).listen((
+          statusUpdate,
+        ) {
+          if (!mounted) return;
 
-      final targetId = messageId ?? localMessageId!;
-      
-      // Find and update the message in the provider
-      final messageIndex = messagesProvider.messages.indexWhere(
-        (m) => m.id == targetId || (localMessageId != null && m.id == localMessageId),
-      );
-      
-      if (messageIndex != -1) {
-        final message = messagesProvider.messages[messageIndex];
-        final updatedMessage = message.copyWith(
-          delivered: delivered,
-          read: read,
-        );
-        messagesProvider.updateMessage(updatedMessage);
-        
-        // Also update local DB
-        ChatService.updateMessageStatus(targetId, delivered, read);
-        
-        setState(() {}); // Force UI rebuild to show new status
-      } else {
-        // Message might not be loaded in current provider, still persist status locally.
-        ChatService.updateMessageStatus(targetId, delivered, read);
-      }
+          final messageId = statusUpdate['messageId'] as String?;
+          final localMessageId = statusUpdate['localMessageId'] as String?;
+          final delivered = statusUpdate['delivered'] as bool? ?? false;
+          final read = statusUpdate['read'] as bool? ?? false;
+
+          if (messageId == null && localMessageId == null) return;
+
+          final targetId = messageId ?? localMessageId!;
+
+          // Find and update the message in the provider
+          final messageIndex = messagesProvider.messages.indexWhere(
+            (m) =>
+                m.id == targetId ||
+                (localMessageId != null && m.id == localMessageId),
+          );
+
+          if (messageIndex != -1) {
+            final message = messagesProvider.messages[messageIndex];
+            final updatedMessage = message.copyWith(
+              delivered: delivered,
+              read: read,
+            );
+            messagesProvider.updateMessage(updatedMessage);
+
+            // Also update local DB
+            ChatService.updateMessageStatus(targetId, delivered, read);
+
+            setState(() {}); // Force UI rebuild to show new status
+          } else {
+            // Message might not be loaded in current provider, still persist status locally.
+            ChatService.updateMessageStatus(targetId, delivered, read);
+          }
+        });
+  }
+
+  /// Start periodic refresh of message status for sent messages
+  /// This catches delivery updates from offline users who come online later
+  void _startStatusRefreshTimer() {
+    _statusRefreshTimer = Timer.periodic(const Duration(seconds: 15), (
+      _,
+    ) async {
+      if (!mounted) return;
+      await _refreshSentMessagesStatus();
     });
+  }
+
+  /// Refresh status of all sent messages in current chat from Firebase
+  /// Only checks messages that are unread or undelivered
+  Future<void> _refreshSentMessagesStatus() async {
+    try {
+      final sentMessages = messagesProvider.messages
+          .where(
+            (m) =>
+                m.fromId == widget.currentUser.uid &&
+                (!m.delivered || !m.read), // Only undelivered or unread
+          )
+          .toList();
+
+      for (final message in sentMessages) {
+        final statusMap = await FirebaseService.getMessageStatus(message.id);
+        if (statusMap != null && mounted) {
+          final delivered = statusMap['delivered'] as bool? ?? false;
+          final read = statusMap['read'] as bool? ?? false;
+
+          // If status changed, update the message
+          if (message.delivered != delivered || message.read != read) {
+            final updatedMessage = message.copyWith(
+              delivered: delivered,
+              read: read,
+            );
+            messagesProvider.updateMessage(updatedMessage);
+            ChatService.updateMessageStatus(message.id, delivered, read);
+            setState(() {});
+          }
+        }
+      }
+    } catch (e) {
+      // Silently handle refresh errors
+    }
   }
 
   /// Listen for message deletions (when messages are removed from Firebase)
@@ -315,26 +367,30 @@ class ChatScreenState extends State<ChatScreen>
         timer.cancel();
         return;
       }
-      
+
       try {
         // Get all messages with remoteId from local DB for this chat
         final localMessages = messagesProvider.messages
-            .where((m) => 
-                m.remoteId != null && 
-                (m.fromId == widget.peer.uid || m.toId == widget.peer.uid))
+            .where(
+              (m) =>
+                  m.remoteId != null &&
+                  (m.fromId == widget.peer.uid || m.toId == widget.peer.uid),
+            )
             .toList();
-        
+
         // Check if they still exist in Firebase
         for (final message in localMessages) {
           if (message.remoteId == null) continue;
-          
+
           try {
-            final status = await FirebaseService.getMessageStatus(message.remoteId!);
-            
+            final status = await FirebaseService.getMessageStatus(
+              message.remoteId!,
+            );
+
             // If message doesn't exist in Firebase (null), delete it locally
             if (status == null) {
               await ChatService.syncMessageDeletion(message.remoteId!);
-              
+
               // Remove from UI
               if (mounted) {
                 messagesProvider.removeMessage(message.id);
@@ -355,10 +411,10 @@ class ChatScreenState extends State<ChatScreen>
     try {
       // First sync all undelivered messages for current user
       await ChatService.syncIncomingMessages(widget.currentUser.uid);
-      
+
       // Then reload messages for this chat
       await _loadMessages(scrollToBottom: true);
-      
+
       // Mark all messages from peer as delivered and read
       await _markAllPeerMessagesAsDeliveredAndRead();
     } catch (e) {
@@ -370,13 +426,13 @@ class ChatScreenState extends State<ChatScreen>
   Future<void> _markAllPeerMessagesAsDeliveredAndRead() async {
     try {
       final messages = messagesProvider.messages
-          .where((m) => m.fromId == widget.peer.uid && (!m.delivered || !m.read))
+          .where(
+            (m) => m.fromId == widget.peer.uid && (!m.delivered || !m.read),
+          )
           .toList();
-      
+
       for (final message in messages) {
-        await _markMessageAsDeliveredAndRead(
-          messageId: message.id,
-        );
+        await _markMessageAsDeliveredAndRead(messageId: message.id);
       }
     } catch (e) {
       // Handle silently
@@ -388,19 +444,30 @@ class ChatScreenState extends State<ChatScreen>
     required String messageId,
   }) async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final readReceiptsEnabled =
+          prefs.getBool('privacy_read_receipts') ?? true;
+
       // Get the message to find the sender UID and remoteId
       final message = messagesProvider.messages.firstWhere(
         (m) => m.id == messageId,
         orElse: () => messagesProvider.messages.first,
       );
-      
-      // Mark message as delivered and read in Firebase using remoteId (not localId)
+
+      // Respect privacy setting: when read receipts are disabled, only mark delivered.
       final idToUse = message.remoteId ?? messageId;
-      await ChatService.markAsDeliveredAndRead(idToUse);
-      
+      if (readReceiptsEnabled) {
+        await ChatService.markAsDeliveredAndRead(idToUse);
+      } else {
+        await ChatService.markAsDelivered(idToUse);
+      }
+
       // Update the message in the provider to reflect the changes
       if (message.id == messageId) {
-        final updatedMessage = message.copyWith(delivered: true, read: true);
+        final updatedMessage = message.copyWith(
+          delivered: true,
+          read: readReceiptsEnabled,
+        );
         messagesProvider.updateMessage(updatedMessage);
         if (mounted) setState(() {}); // Force UI rebuild
       }
@@ -436,10 +503,10 @@ class ChatScreenState extends State<ChatScreen>
 
       if (mounted) {
         messagesProvider.setMessages(messages);
-        
+
         // Sync status from Firebase for sent messages
         await _loadMessageStatusFromFirebase(messages);
-        
+
         setState(() {
           _hasMoreMessages = messages.length >= _pageSize;
         });
@@ -457,28 +524,30 @@ class ChatScreenState extends State<ChatScreen>
   }
 
   /// Load message delivery/read status from Firebase for sent messages
-  Future<void> _loadMessageStatusFromFirebase(List<MessageModel> messages) async {
+  Future<void> _loadMessageStatusFromFirebase(
+    List<MessageModel> messages,
+  ) async {
     try {
       // Only check status for messages sent by current user
-      final sentMessages = messages.where((m) => m.fromId == widget.currentUser.uid).toList();
-      
+      final sentMessages = messages
+          .where((m) => m.fromId == widget.currentUser.uid)
+          .toList();
+
       for (final message in sentMessages) {
         try {
-          final status = await FirebaseService.getMessageStatus(
-            message.id,
-          );
-          
+          final status = await FirebaseService.getMessageStatus(message.id);
+
           if (status != null) {
             final delivered = status['delivered'] as bool? ?? false;
             final read = status['read'] as bool? ?? false;
-            
+
             if (delivered || read) {
               final updatedMessage = message.copyWith(
                 delivered: delivered,
                 read: read,
               );
               messagesProvider.updateMessage(updatedMessage);
-              
+
               // Also update local DB
               if (delivered) {
                 await LocalDBService.updateDeliveryStatus(message.id, true);
@@ -492,7 +561,7 @@ class ChatScreenState extends State<ChatScreen>
           // Silently continue if status fetch fails
         }
       }
-      
+
       if (mounted) {
         setState(() {});
       }
@@ -549,37 +618,19 @@ class ChatScreenState extends State<ChatScreen>
     required String tempMessageId,
   }) async {
     try {
-      await ChatService.sendMessage(
+      // Use the real message returned by ChatService instead of text matching from DB.
+      final realMessage = await ChatService.sendMessage(
         fromId: widget.currentUser.uid,
         toId: widget.peer.uid,
         text: text,
       );
 
-      // Load fresh messages (includes Firebase messages)
-      final messages = await ChatService.getMessagesBetween(
-        widget.currentUser.uid,
-        widget.peer.uid,
-      );
+      if (!mounted) return;
 
-      if (mounted) {
-        // Find the newly sent message (should be the most recent one from current user with matching text)
-        MessageModel? realMessage;
-        for (final msg in messages) {
-          if (msg.fromId == widget.currentUser.uid && msg.text == text) {
-            // If multiple messages with same text, take the newest one
-            if (realMessage == null || msg.timestamp > realMessage.timestamp) {
-              realMessage = msg;
-            }
-          }
-        }
-
-        if (realMessage != null) {
-          // Remove temp message and add real one
-          messagesProvider.removeMessage(tempMessageId);
-          messagesProvider.insertMessage(realMessage);
-          setState(() {});
-        }
-      }
+      // Replace temp message with real message deterministically.
+      messagesProvider.removeMessage(tempMessageId);
+      messagesProvider.insertMessage(realMessage);
+      setState(() {});
     } catch (e) {
       if (mounted) {
         removeMessage(tempMessageId); // Remove on error
@@ -867,7 +918,8 @@ class ChatScreenState extends State<ChatScreen>
                                 ? Alignment.centerRight
                                 : Alignment.centerLeft,
                             child: GestureDetector(
-                              onLongPress: () => _showDeleteMessageDialog(message, mine),
+                              onLongPress: () =>
+                                  _showDeleteMessageDialog(message, mine),
                               child: Container(
                                 constraints: BoxConstraints(
                                   maxWidth:
@@ -894,49 +946,51 @@ class ChatScreenState extends State<ChatScreen>
                                     topLeft: const Radius.circular(16),
                                     topRight: const Radius.circular(16),
                                     bottomLeft: Radius.circular(mine ? 16 : 4),
-                                  bottomRight: Radius.circular(mine ? 4 : 16),
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.08),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2),
+                                    bottomRight: Radius.circular(mine ? 4 : 16),
                                   ),
-                                ],
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  buildMessageContent(message, mine, isDark),
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        DateTimeUtils.formatTime(
-                                          message.timestamp,
-                                        ),
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: mine
-                                              ? Colors.white70
-                                              : (isDark
-                                                    ? AppColors
-                                                          .darkTextSecondary
-                                                    : AppColors
-                                                          .lightTextSecondary),
-                                          fontWeight: FontWeight.w400,
-                                        ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.08,
                                       ),
-                                      if (mine) ...[
-                                        const SizedBox(width: 4),
-                                        _buildMessageStatusIcon(message),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    buildMessageContent(message, mine, isDark),
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          DateTimeUtils.formatTime(
+                                            message.timestamp,
+                                          ),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: mine
+                                                ? Colors.white70
+                                                : (isDark
+                                                      ? AppColors
+                                                            .darkTextSecondary
+                                                      : AppColors
+                                                            .lightTextSecondary),
+                                            fontWeight: FontWeight.w400,
+                                          ),
+                                        ),
+                                        if (mine) ...[
+                                          const SizedBox(width: 4),
+                                          _buildMessageStatusIcon(message),
+                                        ],
                                       ],
-                                    ],
-                                  ),
-                                ],
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
                             ),
                           ),
                         ],
@@ -988,22 +1042,19 @@ class ChatScreenState extends State<ChatScreen>
     // - Single tick: sent but not delivered
     // - Double tick (white/gray): delivered but not read
     // - Double tick (blue): delivered AND read
-    
+
     if (!message.delivered) {
       // Single tick - sent but not delivered yet
-      return const Icon(
-        Icons.done,
-        size: 14,
-        color: Colors.white70,
-      );
+      return const Icon(Icons.done, size: 14, color: Colors.white70);
     }
-    
+
     // Double tick - delivered
     return Icon(
       Icons.done_all,
       size: 14,
-      color: message.read 
-          ? Colors.blue    // Blue when read
+      color: message.read
+          ? Colors
+                .blue // Blue when read
           : Colors.white70, // White/gray when just delivered
     );
   }
@@ -1014,7 +1065,8 @@ class ChatScreenState extends State<ChatScreen>
     final currentTimeMs = DateTime.now().millisecondsSinceEpoch;
     final messageTimeMs = message.timestamp;
     final diffMs = currentTimeMs - messageTimeMs;
-    final isWithinFiveMinutes = diffMs < (5 * 60 * 1000); // 5 minutes in milliseconds
+    final isWithinFiveMinutes =
+        diffMs < (5 * 60 * 1000); // 5 minutes in milliseconds
 
     showDialog(
       context: context,
@@ -1025,7 +1077,9 @@ class ChatScreenState extends State<ChatScreen>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Delete this message for everyone or just for you?'),
+                  const Text(
+                    'Delete this message for everyone or just for you?',
+                  ),
                   if (!isWithinFiveMinutes)
                     Padding(
                       padding: const EdgeInsets.only(top: 12),
@@ -1062,9 +1116,7 @@ class ChatScreenState extends State<ChatScreen>
               onPressed: null,
               child: Text(
                 'Delete for Everyone',
-                style: TextStyle(
-                  color: Colors.grey[400],
-                ),
+                style: TextStyle(color: Colors.grey[400]),
               ),
             ),
           TextButton(
@@ -1086,7 +1138,7 @@ class ChatScreenState extends State<ChatScreen>
   Future<void> _deleteMessageForMe(MessageModel message) async {
     try {
       await ChatService.deleteMessageForMe(message.id);
-      
+
       // Remove from provider/state
       if (mounted) {
         final messagesProvider = context.read<MessagesStateNotifier>();
@@ -1094,15 +1146,15 @@ class ChatScreenState extends State<ChatScreen>
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Message deleted')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Message deleted')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error deleting message: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error deleting message: $e')));
       }
     }
   }
@@ -1111,8 +1163,10 @@ class ChatScreenState extends State<ChatScreen>
   Future<void> _deleteMessageForEveryone(MessageModel message) async {
     try {
       // Log what we're deleting
-      print('[ChatScreen] Deleting for everyone: id=${message.id}, remoteId=${message.remoteId}, fromId=${message.fromId}');
-      
+      print(
+        '[ChatScreen] Deleting for everyone: id=${message.id}, remoteId=${message.remoteId}, fromId=${message.fromId}',
+      );
+
       // Must have remoteId to delete from Firebase
       if (message.remoteId == null) {
         throw Exception('Cannot delete: message does not have a Firebase ID');
@@ -1142,9 +1196,9 @@ class ChatScreenState extends State<ChatScreen>
     } catch (e) {
       print('[ChatScreen] Error deleting for everyone: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }

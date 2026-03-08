@@ -1,9 +1,15 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:whatsapp_clone/auth/auth_service.dart';
 import 'package:whatsapp_clone/core/profile_service.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
 import 'package:whatsapp_clone/screens/profile_edit_screen.dart';
+import 'package:whatsapp_clone/screens/profile_qr_screen.dart';
+import 'package:whatsapp_clone/screens/profile_settings_screens.dart';
+import 'package:whatsapp_clone/screens/theme_mode_screen.dart';
 import 'package:whatsapp_clone/widgets/profile_avatar.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
 
@@ -31,9 +37,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _currentUser = await AuthService.getCurrentUser();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load profile: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to load profile: $e')));
       }
     } finally {
       if (mounted) {
@@ -54,7 +60,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Container(
               padding: const EdgeInsets.all(AppSpacing.sm),
               decoration: BoxDecoration(
-                color: AppColors.error.withOpacity(0.1),
+                color: AppColors.error.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(AppRadius.xs),
               ),
               child: Icon(
@@ -105,10 +111,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
 
     if (confirm == true && mounted) {
-      await ProfileService.updateOnlineStatus(
-        _currentUser?.uid ?? '',
-        false,
-      );
+      final uid = _currentUser?.uid;
+      if (uid != null && uid.isNotEmpty) {
+        await ProfileService.updateOnlineStatus(uid, false);
+      }
       await AuthService.logoutUser();
       if (!mounted) return;
       Navigator.of(context).pushReplacementNamed('/login');
@@ -116,27 +122,78 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _navigateToEditProfile() async {
-    final result = await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const ProfileEditScreen(),
-      ),
-    );
+    final result = await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ProfileEditScreen()));
 
     if (result == true) {
       _loadProfile();
     }
   }
 
-  void _showComingSoon() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Coming soon')),
+  Future<void> _openQrCode() async {
+    if (_currentUser == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ProfileQrScreen(user: _currentUser!)),
     );
   }
 
-  void _showThemeInfo() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Theme follows system settings')),
+  Future<void> _shareProfile() async {
+    if (_currentUser == null) return;
+    final user = _currentUser!;
+    final text =
+        'Chat with me on WhatsApp Clone\n'
+        'Name: ${user.displayName}\n'
+        'Username: @${user.uniqueNumber}\n'
+        'Link: wa_clone://profile?uid=${user.uid}&username=${user.uniqueNumber}';
+
+    await Share.share(text, subject: 'My WhatsApp Clone Profile');
+  }
+
+  Future<void> _openThemeSettings() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ThemeModeScreen()));
+  }
+
+  Future<void> _openPrivacySettings() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const PrivacySettingsScreen()));
+  }
+
+  Future<void> _openSecuritySettings() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const SecuritySettingsScreen()));
+  }
+
+  Future<void> _openNotificationSettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const NotificationSettingsScreen()),
     );
+  }
+
+  Future<void> _openStorageSettings() async {
+    final uid = _currentUser?.uid;
+    if (uid == null || uid.isEmpty) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => StorageSettingsScreen(currentUserUid: uid),
+      ),
+    );
+  }
+
+  Future<void> _openHelpSupport() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const HelpSupportScreen()));
+  }
+
+  Future<void> _openStarredMessages() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const StarredMessagesScreen()));
   }
 
   void _showAbout() {
@@ -155,7 +212,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         content: Text('$label copied to clipboard'),
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+        ),
       ),
     );
   }
@@ -167,32 +226,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profile', style: TextStyle(fontWeight: FontWeight.w600)),
+        title: const Text(
+          'Profile',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
         elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.qr_code_rounded),
             tooltip: 'QR Code',
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('QR Code feature coming soon'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            },
+            onPressed: _openQrCode,
           ),
           IconButton(
             icon: const Icon(Icons.share_rounded),
             tooltip: 'Share Profile',
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Share profile feature coming soon'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            },
+            onPressed: _shareProfile,
           ),
         ],
       ),
@@ -214,7 +262,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildProfileSection(ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildProfileSection(ThemeData theme, ColorScheme _) {
     if (_currentUser == null) {
       return const Center(child: Text('No user data available'));
     }
@@ -232,9 +280,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             decoration: BoxDecoration(
               gradient: AppColors.primaryGradient,
               borderRadius: BorderRadius.circular(AppRadius.lg),
-              boxShadow: [
-                AppShadows.coloredShadow(AppColors.accent),
-              ],
+              boxShadow: [AppShadows.coloredShadow(AppColors.accent)],
             ),
             child: Column(
               children: [
@@ -248,7 +294,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
+                            color: Colors.black.withValues(alpha: 0.2),
                             blurRadius: 20,
                             offset: const Offset(0, 10),
                           ),
@@ -271,10 +317,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           decoration: BoxDecoration(
                             color: AppColors.success,
                             shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white,
-                              width: 4,
-                            ),
+                            border: Border.all(color: Colors.white, width: 4),
                           ),
                         ),
                       ),
@@ -289,7 +332,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
+                              color: Colors.black.withValues(alpha: 0.2),
                               blurRadius: 8,
                             ),
                           ],
@@ -325,10 +368,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     vertical: AppSpacing.sm,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.25),
+                    color: Colors.white.withValues(alpha: 0.25),
                     borderRadius: BorderRadius.circular(AppRadius.xs),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.3),
+                      color: Colors.white.withValues(alpha: 0.3),
                       width: 1.5,
                     ),
                   ),
@@ -356,7 +399,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 borderRadius: BorderRadius.circular(AppRadius.md),
                 boxShadow: [AppShadows.card],
                 border: Border.all(
-                  color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.05)
+                      : Colors.black.withValues(alpha: 0.05),
                   width: 1,
                 ),
               ),
@@ -379,7 +424,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Text(
                       _currentUser!.status,
                       style: theme.textTheme.bodyLarge?.copyWith(
-                        color: isDark ? AppColors.darkText : AppColors.lightText,
+                        color: isDark
+                            ? AppColors.darkText
+                            : AppColors.lightText,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -395,7 +442,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               borderRadius: BorderRadius.circular(AppRadius.md),
               boxShadow: [AppShadows.card],
               border: Border.all(
-                color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : Colors.black.withValues(alpha: 0.05),
                 width: 1,
               ),
             ),
@@ -415,7 +464,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   subtitle: _currentUser!.uniqueNumber,
                   isDark: isDark,
                   showDivider: true,
-                  onTap: () => _copyToClipboard(_currentUser!.uniqueNumber, 'Chat Number'),
+                  onTap: () => _copyToClipboard(
+                    _currentUser!.uniqueNumber,
+                    'Chat Number',
+                  ),
                 ),
                 _buildInfoTile(
                   icon: Icons.calendar_today_outlined,
@@ -428,7 +480,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   icon: Icons.vpn_key_outlined,
                   title: 'Public Key',
                   subtitle: _currentUser!.publicKey.isNotEmpty
-                      ? '${_currentUser!.publicKey.substring(0, 32)}...'
+                      ? '${_currentUser!.publicKey.substring(0, min(32, _currentUser!.publicKey.length))}...'
                       : 'Not set',
                   isDark: isDark,
                   showDivider: false,
@@ -444,9 +496,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             decoration: BoxDecoration(
               gradient: AppColors.primaryGradient,
               borderRadius: BorderRadius.circular(AppRadius.sm),
-              boxShadow: [
-                AppShadows.coloredShadow(AppColors.accent),
-              ],
+              boxShadow: [AppShadows.coloredShadow(AppColors.accent)],
             ),
             child: ElevatedButton.icon(
               onPressed: _navigateToEditProfile,
@@ -469,7 +519,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           const SizedBox(height: AppSpacing.xl),
-          
+
           // Quick Actions Row
           Row(
             children: [
@@ -478,7 +528,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   icon: Icons.qr_code_rounded,
                   label: 'QR Code',
                   isDark: isDark,
-                  onTap: () => _showComingSoon(),
+                  onTap: _openQrCode,
                 ),
               ),
               const SizedBox(width: AppSpacing.md),
@@ -487,7 +537,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   icon: Icons.share_rounded,
                   label: 'Share',
                   isDark: isDark,
-                  onTap: () => _showComingSoon(),
+                  onTap: _shareProfile,
                 ),
               ),
               const SizedBox(width: AppSpacing.md),
@@ -496,7 +546,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   icon: Icons.star_rounded,
                   label: 'Starred',
                   isDark: isDark,
-                  onTap: () => _showComingSoon(),
+                  onTap: _openStarredMessages,
                 ),
               ),
             ],
@@ -521,7 +571,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
           borderRadius: BorderRadius.circular(AppRadius.md),
           border: Border.all(
-            color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.black.withValues(alpha: 0.05),
             width: 1,
           ),
           boxShadow: [AppShadows.card],
@@ -535,11 +587,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 gradient: AppColors.primaryGradient,
                 borderRadius: BorderRadius.circular(AppRadius.xs),
               ),
-              child: Icon(
-                icon,
-                color: Colors.white,
-                size: 20,
-              ),
+              child: Icon(icon, color: Colors.white, size: 20),
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
@@ -580,7 +628,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               borderRadius: BorderRadius.circular(AppRadius.md),
               boxShadow: [AppShadows.card],
               border: Border.all(
-                color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : Colors.black.withValues(alpha: 0.05),
                 width: 1,
               ),
             ),
@@ -591,7 +641,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: 'Privacy',
                   subtitle: 'Control your privacy settings',
                   isDark: isDark,
-                  onTap: _showComingSoon,
+                  onTap: _openPrivacySettings,
                   showDivider: true,
                 ),
                 _buildSettingsTile(
@@ -599,7 +649,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: 'Security',
                   subtitle: 'Manage your account security',
                   isDark: isDark,
-                  onTap: _showComingSoon,
+                  onTap: _openSecuritySettings,
                   showDivider: true,
                 ),
                 _buildSettingsTile(
@@ -607,7 +657,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: 'Notifications',
                   subtitle: 'Notification preferences',
                   isDark: isDark,
-                  onTap: _showComingSoon,
+                  onTap: _openNotificationSettings,
                   showDivider: false,
                 ),
               ],
@@ -630,7 +680,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               borderRadius: BorderRadius.circular(AppRadius.md),
               boxShadow: [AppShadows.card],
               border: Border.all(
-                color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : Colors.black.withValues(alpha: 0.05),
                 width: 1,
               ),
             ),
@@ -639,9 +691,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _buildSettingsTile(
                   icon: Icons.palette,
                   title: 'Theme',
-                  subtitle: Theme.of(context).brightness == Brightness.dark ? 'Dark Mode' : 'Light Mode',
+                  subtitle: Theme.of(context).brightness == Brightness.dark
+                      ? 'Dark Mode'
+                      : 'Light Mode',
                   isDark: isDark,
-                  onTap: _showThemeInfo,
+                  onTap: _openThemeSettings,
                   showDivider: true,
                 ),
                 _buildSettingsTile(
@@ -649,7 +703,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: 'Storage',
                   subtitle: 'Manage app storage',
                   isDark: isDark,
-                  onTap: _showComingSoon,
+                  onTap: _openStorageSettings,
                   showDivider: false,
                 ),
               ],
@@ -672,7 +726,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               borderRadius: BorderRadius.circular(AppRadius.md),
               boxShadow: [AppShadows.card],
               border: Border.all(
-                color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : Colors.black.withValues(alpha: 0.05),
                 width: 1,
               ),
             ),
@@ -691,7 +747,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: 'Help & Support',
                   subtitle: 'Get help and support',
                   isDark: isDark,
-                  onTap: _showComingSoon,
+                  onTap: _openHelpSupport,
                   showDivider: false,
                 ),
               ],
@@ -707,7 +763,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               borderRadius: BorderRadius.circular(AppRadius.sm),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.error.withOpacity(0.3),
+                  color: AppColors.error.withValues(alpha: 0.3),
                   blurRadius: 12,
                   offset: const Offset(0, 6),
                 ),
@@ -757,13 +813,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Container(
             padding: const EdgeInsets.all(AppSpacing.sm),
             decoration: BoxDecoration(
-              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.black.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(AppRadius.xs),
             ),
             child: Icon(
               icon,
               size: 20,
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              color: isDark
+                  ? AppColors.darkTextSecondary
+                  : AppColors.lightTextSecondary,
             ),
           ),
           const SizedBox(width: AppSpacing.lg),
@@ -775,7 +835,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title,
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -795,7 +857,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Icon(
               Icons.copy_rounded,
               size: 16,
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              color: isDark
+                  ? AppColors.darkTextSecondary
+                  : AppColors.lightTextSecondary,
             ),
         ],
       ),
@@ -815,7 +879,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Divider(
             height: 1,
             thickness: 1,
-            color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.black.withValues(alpha: 0.05),
           ),
       ],
     );
@@ -835,13 +901,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
           leading: Container(
             padding: const EdgeInsets.all(AppSpacing.sm),
             decoration: BoxDecoration(
-              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.black.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(AppRadius.xs),
             ),
             child: Icon(
               icon,
               size: 20,
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              color: isDark
+                  ? AppColors.darkTextSecondary
+                  : AppColors.lightTextSecondary,
             ),
           ),
           title: Text(
@@ -856,12 +926,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
             subtitle,
             style: TextStyle(
               fontSize: 12,
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              color: isDark
+                  ? AppColors.darkTextSecondary
+                  : AppColors.lightTextSecondary,
             ),
           ),
           trailing: Icon(
             Icons.chevron_right,
-            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+            color: isDark
+                ? AppColors.darkTextSecondary
+                : AppColors.lightTextSecondary,
           ),
           onTap: onTap,
         ),
@@ -869,7 +943,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Divider(
             height: 1,
             thickness: 1,
-            color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.black.withValues(alpha: 0.05),
             indent: 16,
             endIndent: 16,
           ),
@@ -891,7 +967,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       'Sep',
       'Oct',
       'Nov',
-      'Dec'
+      'Dec',
     ];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }

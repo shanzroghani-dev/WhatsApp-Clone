@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:whatsapp_clone/core/encryption_service.dart';
 import 'package:whatsapp_clone/core/firebase_service.dart';
 import 'package:whatsapp_clone/firebase_options.dart';
@@ -22,7 +23,9 @@ String _decryptMessageBody(RemoteMessage message) {
     final senderUid = message.data['senderUID']?.toString();
     final receiverUid = message.data['receiverUID']?.toString();
 
-    print('[FCM] 🔐 decrypt attempt: cipher=${cipher?.isNotEmpty ?? false}, iv=${iv?.isNotEmpty ?? false}, sender=$senderUid, receiver=$receiverUid');
+    print(
+      '[FCM] 🔐 decrypt attempt: cipher=${cipher?.isNotEmpty ?? false}, iv=${iv?.isNotEmpty ?? false}, sender=$senderUid, receiver=$receiverUid',
+    );
 
     // If we have encrypted data, decrypt it
     if (cipher != null &&
@@ -33,8 +36,12 @@ String _decryptMessageBody(RemoteMessage message) {
         senderUid.isNotEmpty &&
         receiverUid != null &&
         receiverUid.isNotEmpty) {
-      final decrypted =
-          EncryptionService.decryptForUsers(cipher, iv, senderUid, receiverUid);
+      final decrypted = EncryptionService.decryptForUsers(
+        cipher,
+        iv,
+        senderUid,
+        receiverUid,
+      );
       if (decrypted != null && decrypted.isNotEmpty) {
         print('[FCM] ✅ decrypted: $decrypted');
         return decrypted;
@@ -49,12 +56,42 @@ String _decryptMessageBody(RemoteMessage message) {
   }
 
   // Fallback to plaintext body if decryption fails or no encrypted data
-  final fallback = message.notification?.body ?? message.data['body'] ?? 'New message';
+  final fallback =
+      message.notification?.body ?? message.data['body'] ?? 'New message';
   print('[FCM] 📝 using fallback: $fallback');
   return fallback;
 }
 
+class _NotificationPrefs {
+  _NotificationPrefs({
+    required this.messagesEnabled,
+    required this.soundEnabled,
+    required this.vibrationEnabled,
+    required this.previewEnabled,
+  });
+
+  final bool messagesEnabled;
+  final bool soundEnabled;
+  final bool vibrationEnabled;
+  final bool previewEnabled;
+}
+
+Future<_NotificationPrefs> _loadNotificationPrefs() async {
+  final prefs = await SharedPreferences.getInstance();
+  return _NotificationPrefs(
+    messagesEnabled: prefs.getBool('notifications_messages') ?? true,
+    soundEnabled: prefs.getBool('notifications_sound') ?? true,
+    vibrationEnabled: prefs.getBool('notifications_vibration') ?? true,
+    previewEnabled: prefs.getBool('notifications_preview') ?? true,
+  );
+}
+
 Future<void> _showBackgroundLocalNotification(RemoteMessage message) async {
+  final prefs = await _loadNotificationPrefs();
+  if (!prefs.messagesEnabled) {
+    return;
+  }
+
   if (message.notification != null) {
     return;
   }
@@ -78,7 +115,9 @@ Future<void> _showBackgroundLocalNotification(RemoteMessage message) async {
 
   final title =
       message.notification?.title ?? message.data['title'] ?? 'New message';
-  final body = _decryptMessageBody(message);
+  final body = prefs.previewEnabled
+      ? _decryptMessageBody(message)
+      : 'New message';
 
   await plugin.show(
     message.messageId?.hashCode ?? DateTime.now().millisecondsSinceEpoch,
@@ -91,8 +130,10 @@ Future<void> _showBackgroundLocalNotification(RemoteMessage message) async {
         channelDescription: _defaultChannel.description,
         importance: Importance.high,
         priority: Priority.high,
+        playSound: prefs.soundEnabled,
+        enableVibration: prefs.vibrationEnabled,
       ),
-      iOS: DarwinNotificationDetails(),
+      iOS: DarwinNotificationDetails(presentSound: prefs.soundEnabled),
     ),
     payload: message.data.isEmpty ? null : message.data.toString(),
   );
@@ -100,9 +141,11 @@ Future<void> _showBackgroundLocalNotification(RemoteMessage message) async {
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print('[FCM] 📬 BACKGROUND: messageId=${message.messageId}, title=${message.notification?.title}');
+  print(
+    '[FCM] 📬 BACKGROUND: messageId=${message.messageId}, title=${message.notification?.title}',
+  );
   print('[FCM] 📬 BACKGROUND DATA: ${message.data}');
-  
+
   // Ensure Firebase is initialized in background context
   try {
     if (Firebase.apps.isEmpty) {
@@ -114,7 +157,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   } catch (e) {
     print('[FCM] Firebase init in background failed: $e');
   }
-  
+
   await NotificationService.markDeliveredFromNotification(message);
   await _showBackgroundLocalNotification(message);
 }
@@ -146,18 +189,16 @@ class NotificationService {
     await _messaging.requestPermission(alert: true, badge: true, sound: true);
     await _messaging.setAutoInitEnabled(true);
 
-    await _messaging.setForegroundNotificationPresentationOptions(
-      alert: false,
-      badge: false,
-      sound: false,
-    );
+    await refreshNotificationPreferences();
 
     await _initializeLocalNotifications();
 
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
     FirebaseMessaging.onMessage.listen((message) {
-      print('[FCM] 📬 FOREGROUND: messageId=${message.messageId}, title=${message.notification?.title}, from=${message.data['senderUID']}');
+      print(
+        '[FCM] 📬 FOREGROUND: messageId=${message.messageId}, title=${message.notification?.title}, from=${message.data['senderUID']}',
+      );
       print('[FCM] 📬 FOREGROUND DATA: ${message.data}');
       unawaited(markDeliveredFromNotification(message));
       _handleForegroundMessage(message);
@@ -172,7 +213,9 @@ class NotificationService {
     await _syncTokenIfPossible();
 
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      print('[FCM] 📬 OPENED: messageId=${message.messageId}, title=${message.notification?.title}');
+      print(
+        '[FCM] 📬 OPENED: messageId=${message.messageId}, title=${message.notification?.title}',
+      );
       print('[FCM] 📬 OPENED DATA: ${message.data}');
       unawaited(markDeliveredFromNotification(message));
       _navigatorKey?.currentState?.pushNamed('/home');
@@ -180,7 +223,9 @@ class NotificationService {
 
     final initialMessage = await _messaging.getInitialMessage();
     if (initialMessage != null) {
-      print('[FCM] 📬 LAUNCH: messageId=${initialMessage.messageId}, title=${initialMessage.notification?.title}');
+      print(
+        '[FCM] 📬 LAUNCH: messageId=${initialMessage.messageId}, title=${initialMessage.notification?.title}',
+      );
       print('[FCM] 📬 LAUNCH DATA: ${initialMessage.data}');
       unawaited(markDeliveredFromNotification(initialMessage));
       _navigatorKey?.currentState?.pushNamed('/home');
@@ -248,19 +293,86 @@ class NotificationService {
   }
 
   static void _handleForegroundMessage(RemoteMessage message) {
+    unawaited(_handleForegroundMessageAsync(message));
+  }
+
+  static Future<void> _handleForegroundMessageAsync(
+    RemoteMessage message,
+  ) async {
+    final prefs = await _loadNotificationPrefs();
+    if (!prefs.messagesEnabled) return;
+
     if (_shouldSuppressForActiveChat(message)) {
       return;
     }
 
     final title =
         message.notification?.title ?? message.data['title'] ?? 'New message';
-    final body = _decryptMessageBody(message);
+    final body = prefs.previewEnabled
+        ? _decryptMessageBody(message)
+        : 'New message';
 
     _scaffoldMessengerKey?.currentState?.showSnackBar(
       SnackBar(
         content: Text('$title\n$body'),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 3),
+      ),
+    );
+
+    await _localNotifications.show(
+      message.messageId?.hashCode ?? DateTime.now().millisecondsSinceEpoch,
+      title,
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _defaultChannel.id,
+          _defaultChannel.name,
+          channelDescription: _defaultChannel.description,
+          importance: Importance.high,
+          priority: Priority.high,
+          playSound: prefs.soundEnabled,
+          enableVibration: prefs.vibrationEnabled,
+        ),
+        iOS: DarwinNotificationDetails(presentSound: prefs.soundEnabled),
+      ),
+      payload: message.data.isEmpty ? null : message.data.toString(),
+    );
+  }
+
+  static Future<void> refreshNotificationPreferences() async {
+    final prefs = await _loadNotificationPrefs();
+    await _messaging.setForegroundNotificationPresentationOptions(
+      alert: prefs.messagesEnabled,
+      badge: prefs.messagesEnabled,
+      sound: prefs.messagesEnabled && prefs.soundEnabled,
+    );
+  }
+
+  static Future<void> sendTestNotification() async {
+    final prefs = await _loadNotificationPrefs();
+    if (!prefs.messagesEnabled) {
+      _scaffoldMessengerKey?.currentState?.showSnackBar(
+        const SnackBar(content: Text('Notifications are currently disabled')),
+      );
+      return;
+    }
+
+    await _localNotifications.show(
+      DateTime.now().millisecondsSinceEpoch,
+      'WhatsApp Clone',
+      prefs.previewEnabled ? 'This is a test notification' : 'New message',
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _defaultChannel.id,
+          _defaultChannel.name,
+          channelDescription: _defaultChannel.description,
+          importance: Importance.high,
+          priority: Priority.high,
+          playSound: prefs.soundEnabled,
+          enableVibration: prefs.vibrationEnabled,
+        ),
+        iOS: DarwinNotificationDetails(presentSound: prefs.soundEnabled),
       ),
     );
   }
@@ -298,7 +410,9 @@ class NotificationService {
     return FirebaseMessaging.onMessageOpenedApp;
   }
 
-  static Future<void> markDeliveredFromNotification(RemoteMessage message) async {
+  static Future<void> markDeliveredFromNotification(
+    RemoteMessage message,
+  ) async {
     try {
       final messageId =
           message.data['messageId']?.toString() ??
@@ -322,7 +436,9 @@ class NotificationService {
         return;
       }
 
-      print('[FCM] ✅ markDelivered: msgId=$messageId, receiver=$receiverUid, sender=$senderUid');
+      print(
+        '[FCM] ✅ markDelivered: msgId=$messageId, receiver=$receiverUid, sender=$senderUid',
+      );
       await FirebaseService.markAsDelivered(messageId);
     } catch (e) {
       print('[FCM] ❌ markDelivered error: $e');

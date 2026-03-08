@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:whatsapp_clone/auth/auth_service.dart';
 import 'package:whatsapp_clone/chat/chat_service.dart';
 import 'package:whatsapp_clone/core/profile_service.dart';
@@ -25,9 +26,11 @@ class ChatListScreen extends StatefulWidget {
 class _ChatListScreenState extends State<ChatListScreen> {
   UserModel? _currentUser;
   List<UserModel> _users = [];
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
   final Map<String, String> _lastMessageByUid = {};
   final Map<String, int> _unreadCounts = {};
-  final Map<String, DateTime> _lastMessageTimeByUid = {};
+  final Map<String, DateTime?> _lastMessageTimeByUid = {};
   StreamSubscription? _incomingSub;
   bool _loading = true;
 
@@ -41,8 +44,24 @@ class _ChatListScreenState extends State<ChatListScreen> {
   @override
   void dispose() {
     _incomingSub?.cancel();
+    _searchController.dispose();
     _updateOnlineStatus(false);
     super.dispose();
+  }
+
+  List<UserModel> get _filteredUsers {
+    if (_searchQuery.trim().isEmpty) return _users;
+    final query = _searchQuery.toLowerCase();
+    return _users.where((user) {
+      final lastMessage = (_lastMessageByUid[user.uid] ?? '').toLowerCase();
+      final name = user.displayName.toLowerCase();
+      final status = user.status.toLowerCase();
+      final tag = user.uniqueNumber.toLowerCase();
+      return name.contains(query) ||
+          status.contains(query) ||
+          lastMessage.contains(query) ||
+          tag.contains(query);
+    }).toList();
   }
 
   String _formatMessageTime(DateTime? time) {
@@ -65,6 +84,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   Future<void> _updateOnlineStatus(bool isOnline) async {
+    final prefs = await SharedPreferences.getInstance();
+    final shareOnlineStatus =
+        prefs.getBool('privacy_show_online_status') ?? true;
+    if (!shareOnlineStatus) {
+      return;
+    }
+
     final user = await AuthService.getCurrentUser();
     if (user != null) {
       await ProfileService.updateOnlineStatus(user.uid, isOnline);
@@ -98,6 +124,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       final chatEntries = await ChatService.getLocalChatList(me.uid);
       final users = <UserModel>[];
       _lastMessageByUid.clear();
+      _lastMessageTimeByUid.clear();
 
       for (final entry in chatEntries) {
         final peerUid = entry['peerUID'] as String?;
@@ -117,9 +144,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
         users.add(peer);
         _lastMessageByUid[peerUid] = (entry['lastMessage'] as String?) ?? '';
         final lastTimestamp = (entry['lastTimestamp'] as int?) ?? 0;
-        _lastMessageTimeByUid[peerUid] = (lastTimestamp > 0
+        _lastMessageTimeByUid[peerUid] = lastTimestamp > 0
             ? DateTime.fromMillisecondsSinceEpoch(lastTimestamp)
-            : null)!;
+            : null;
       }
 
       setState(() {
@@ -199,7 +226,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   void _showDeleteChatDialog(UserModel user) {
     if (_currentUser == null) return;
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -262,19 +289,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   Future<void> _deleteChatForMe(UserModel user) async {
     if (_currentUser == null) return;
-    
+
     try {
       print('[ChatList] Deleting chat for me: ${user.uid}');
       await ChatService.deleteConversationForMe(_currentUser!.uid, user.uid);
-      
+
       if (mounted) {
-        setState(() {
-          _users.removeWhere((u) => u.uid == user.uid);
-          _lastMessageByUid.remove(user.uid);
-          _lastMessageTimeByUid.remove(user.uid);
-          _unreadCounts.remove(user.uid);
-        });
-        
+        // Don't remove from cache - keep chat visible after deletion
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Chat with ${user.displayName} deleted')),
         );
@@ -282,31 +303,25 @@ class _ChatListScreenState extends State<ChatListScreen> {
     } catch (e) {
       print('[ChatList] Error deleting chat for me: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error deleting chat: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error deleting chat: $e')));
       }
     }
   }
 
   Future<void> _deleteChatForEveryone(UserModel user) async {
     if (_currentUser == null) return;
-    
+
     try {
       print('[ChatList] Deleting chat for everyone: ${user.uid}');
       await ChatService.deleteConversationForEveryone(
         _currentUser!.uid,
         user.uid,
       );
-      
+
       if (mounted) {
-        setState(() {
-          _users.removeWhere((u) => u.uid == user.uid);
-          _lastMessageByUid.remove(user.uid);
-          _lastMessageTimeByUid.remove(user.uid);
-          _unreadCounts.remove(user.uid);
-        });
-        
+        // Don't remove from cache - keep chat visible after deletion
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Chat with ${user.displayName} deleted for everyone'),
@@ -316,9 +331,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
     } catch (e) {
       print('[ChatList] Error deleting chat for everyone: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -327,9 +342,19 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final filteredUsers = _filteredUsers;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Chats')),
+      appBar: AppBar(
+        title: const Text('Chats'),
+        actions: [
+          IconButton(
+            onPressed: _openSearch,
+            icon: const Icon(Icons.person_search_rounded),
+            tooltip: 'Find users',
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _users.isEmpty
@@ -408,222 +433,386 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 ),
               ),
             )
-          : RefreshIndicator(
-              onRefresh: _loadUsers,
-              child: ListView.builder(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                itemCount: _users.length,
-                itemBuilder: (_, index) {
-                  final user = _users[index];
-                  final lastMessage = _lastMessageByUid[user.uid] ?? '';
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: AppSpacing.md),
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    AppSpacing.md,
+                    AppSpacing.lg,
+                    AppSpacing.sm,
+                  ),
+                  child: Container(
                     decoration: BoxDecoration(
                       color: isDark
-                          ? AppColors.darkSurface
+                          ? AppColors.darkSurfaceVariant
                           : AppColors.lightSurface,
                       borderRadius: BorderRadius.circular(AppRadius.md),
-                      boxShadow: AppShadows.cardList,
                       border: Border.all(
                         color: isDark
-                            ? Colors.white.withOpacity(0.05)
-                            : Colors.black.withOpacity(0.05),
-                        width: 1,
+                            ? Colors.white.withValues(alpha: 0.08)
+                            : Colors.black.withValues(alpha: 0.06),
                       ),
                     ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () => _openChat(user),
-                        onLongPress: () => _showDeleteChatDialog(user),
-                        borderRadius: BorderRadius.circular(AppRadius.md),
-                        child: Padding(
-                          padding: const EdgeInsets.all(AppSpacing.lg),
-                          child: Row(
-                            children: [
-                              // Avatar with Gradient Border
-                              Stack(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(3),
-                                    decoration: BoxDecoration(
-                                      gradient: user.isOnline
-                                          ? AppColors.primaryGradient
-                                          : null,
-                                      color: user.isOnline
-                                          ? null
-                                          : (isDark
-                                                ? Colors.white12
-                                                : Colors.black12),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: ProfileAvatar(
-                                      imageUrl: user.profilePic,
-                                      displayName: user.displayName,
-                                      radius: 28,
-                                      showOnlineIndicator: false,
-                                    ),
-                                  ),
-                                  if (user.isOnline)
-                                    Positioned(
-                                      right: 0,
-                                      bottom: 0,
-                                      child: Container(
-                                        width: 16,
-                                        height: 16,
-                                        decoration: BoxDecoration(
-                                          color: AppColors.success,
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
-                                            color: isDark
-                                                ? AppColors.darkSurface
-                                                : AppColors.lightSurface,
-                                            width: 2.5,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                ],
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (value) {
+                        setState(() {
+                          _searchQuery = value;
+                        });
+                      },
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.lg,
+                          vertical: AppSpacing.md,
+                        ),
+                        hintText: 'Search chats, people, or messages',
+                        hintStyle: TextStyle(
+                          color: isDark
+                              ? AppColors.darkTextSecondary
+                              : AppColors.lightTextSecondary,
+                        ),
+                        prefixIcon: const Icon(Icons.search_rounded),
+                        suffixIcon: _searchQuery.isEmpty
+                            ? null
+                            : IconButton(
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = '');
+                                },
+                                icon: const Icon(Icons.close_rounded),
                               ),
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    0,
+                    AppSpacing.lg,
+                    AppSpacing.md,
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        '${filteredUsers.length} ${filteredUsers.length == 1 ? 'chat' : 'chats'}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: isDark
+                              ? AppColors.darkTextSecondary
+                              : AppColors.lightTextSecondary,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (_searchQuery.isNotEmpty)
+                        Text(
+                          'Filtered',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: filteredUsers.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(AppSpacing.xxxl),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.search_off_rounded,
+                                  size: 54,
+                                  color: isDark
+                                      ? AppColors.darkTextSecondary
+                                      : AppColors.lightTextSecondary,
+                                ),
+                                const SizedBox(height: AppSpacing.md),
+                                Text(
+                                  'No matching chats',
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: AppSpacing.sm),
+                                Text(
+                                  'Try a different name, username, or message keyword.',
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: isDark
+                                        ? AppColors.darkTextSecondary
+                                        : AppColors.lightTextSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _loadUsers,
+                          child: ListView.builder(
+                            physics: const BouncingScrollPhysics(),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.lg,
+                              vertical: AppSpacing.sm,
+                            ),
+                            itemCount: filteredUsers.length,
+                            itemBuilder: (_, index) {
+                              final user = filteredUsers[index];
+                              final lastMessage =
+                                  _lastMessageByUid[user.uid] ?? '';
 
-                              const SizedBox(width: AppSpacing.lg),
-
-                              // Content
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            user.displayName,
-                                            style: theme.textTheme.titleMedium
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.w700,
-                                                  color: isDark
-                                                      ? AppColors.darkText
-                                                      : AppColors.lightText,
+                              return Container(
+                                margin: const EdgeInsets.only(
+                                  bottom: AppSpacing.md,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? AppColors.darkSurface
+                                      : AppColors.lightSurface,
+                                  borderRadius: BorderRadius.circular(
+                                    AppRadius.md,
+                                  ),
+                                  boxShadow: AppShadows.cardList,
+                                  border: Border.all(
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.05)
+                                        : Colors.black.withValues(alpha: 0.05),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () => _openChat(user),
+                                    onLongPress: () =>
+                                        _showDeleteChatDialog(user),
+                                    borderRadius: BorderRadius.circular(
+                                      AppRadius.md,
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(
+                                        AppSpacing.lg,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Stack(
+                                            children: [
+                                              Container(
+                                                padding: const EdgeInsets.all(
+                                                  3,
                                                 ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: AppSpacing.sm.toDouble(),
-                                        ),
-                                        Text(
-                                          _formatMessageTime(
-                                            _lastMessageTimeByUid[user.uid],
-                                          ),
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: isDark
-                                                ? AppColors.darkTextSecondary
-                                                : AppColors.lightTextSecondary,
-                                          ),
-                                        ),
-                                        if (user.isOnline)
-                                          SizedBox(
-                                            width: AppSpacing.sm.toDouble(),
-                                          ),
-                                        if (user.isOnline)
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: AppSpacing.sm,
-                                              vertical: 2,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              gradient:
-                                                  AppColors.accentGradient,
-                                              borderRadius:
-                                                  BorderRadius.circular(
-                                                    AppRadius.xs,
+                                                decoration: BoxDecoration(
+                                                  gradient: user.isOnline
+                                                      ? AppColors
+                                                            .primaryGradient
+                                                      : null,
+                                                  color: user.isOnline
+                                                      ? null
+                                                      : (isDark
+                                                            ? Colors.white12
+                                                            : Colors.black12),
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: ProfileAvatar(
+                                                  imageUrl: user.profilePic,
+                                                  displayName: user.displayName,
+                                                  radius: 28,
+                                                  showOnlineIndicator: false,
+                                                ),
+                                              ),
+                                              if (user.isOnline)
+                                                Positioned(
+                                                  right: 0,
+                                                  bottom: 0,
+                                                  child: Container(
+                                                    width: 16,
+                                                    height: 16,
+                                                    decoration: BoxDecoration(
+                                                      color: AppColors.success,
+                                                      shape: BoxShape.circle,
+                                                      border: Border.all(
+                                                        color: isDark
+                                                            ? AppColors
+                                                                  .darkSurface
+                                                            : AppColors
+                                                                  .lightSurface,
+                                                        width: 2.5,
+                                                      ),
+                                                    ),
                                                   ),
+                                                ),
+                                            ],
+                                          ),
+                                          const SizedBox(width: AppSpacing.lg),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: Text(
+                                                        user.displayName,
+                                                        style: theme
+                                                            .textTheme
+                                                            .titleMedium
+                                                            ?.copyWith(
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700,
+                                                              color: isDark
+                                                                  ? AppColors
+                                                                        .darkText
+                                                                  : AppColors
+                                                                        .lightText,
+                                                            ),
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(
+                                                      width: AppSpacing.sm,
+                                                    ),
+                                                    Text(
+                                                      _formatMessageTime(
+                                                        _lastMessageTimeByUid[user
+                                                            .uid],
+                                                      ),
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        color: isDark
+                                                            ? AppColors
+                                                                  .darkTextSecondary
+                                                            : AppColors
+                                                                  .lightTextSecondary,
+                                                      ),
+                                                    ),
+                                                    if (user.isOnline)
+                                                      const SizedBox(
+                                                        width: AppSpacing.sm,
+                                                      ),
+                                                    if (user.isOnline)
+                                                      Container(
+                                                        padding:
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal:
+                                                                  AppSpacing.sm,
+                                                              vertical: 2,
+                                                            ),
+                                                        decoration: BoxDecoration(
+                                                          gradient: AppColors
+                                                              .accentGradient,
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                AppRadius.xs,
+                                                              ),
+                                                        ),
+                                                        child: const Text(
+                                                          'Online',
+                                                          style: TextStyle(
+                                                            fontSize: 10,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            color: Colors.white,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  lastMessage.isNotEmpty
+                                                      ? _truncateMessage(
+                                                          lastMessage,
+                                                          40,
+                                                        )
+                                                      : (user.status.isNotEmpty
+                                                            ? user.status
+                                                            : '@${user.uniqueNumber}'),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    color: isDark
+                                                        ? AppColors
+                                                              .darkTextSecondary
+                                                        : AppColors
+                                                              .lightTextSecondary,
+                                                    fontSize: 13,
+                                                    fontWeight:
+                                                        (_unreadCounts[user
+                                                                    .uid] ??
+                                                                0) >
+                                                            0
+                                                        ? FontWeight.w600
+                                                        : FontWeight.w400,
+                                                  ),
+                                                ),
+                                              ],
                                             ),
-                                            child: const Text(
-                                              'Online',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w700,
+                                          ),
+                                          const SizedBox(width: AppSpacing.sm),
+                                          if ((_unreadCounts[user.uid] ?? 0) >
+                                              0)
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: AppSpacing.sm,
+                                                    vertical: 4,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                gradient:
+                                                    AppColors.primaryGradient,
+                                                borderRadius:
+                                                    BorderRadius.circular(
+                                                      AppRadius.xs,
+                                                    ),
+                                              ),
+                                              child: Text(
+                                                _unreadCounts[user.uid]
+                                                    .toString(),
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            )
+                                          else
+                                            Container(
+                                              width: 32,
+                                              height: 32,
+                                              decoration: BoxDecoration(
+                                                gradient:
+                                                    AppColors.primaryGradient,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(
+                                                Icons.arrow_forward_ios,
+                                                size: 14,
                                                 color: Colors.white,
                                               ),
                                             ),
-                                          ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      lastMessage.isNotEmpty
-                                          ? _truncateMessage(lastMessage, 40)
-                                          : (user.status.isNotEmpty
-                                                ? user.status
-                                                : '@${user.uniqueNumber}'),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: isDark
-                                            ? AppColors.darkTextSecondary
-                                            : AppColors.lightTextSecondary,
-                                        fontSize: 13,
-                                        fontWeight:
-                                            (_unreadCounts[user.uid] ?? 0) > 0
-                                            ? FontWeight.w600
-                                            : FontWeight.w400,
+                                        ],
                                       ),
                                     ),
-                                  ],
-                                ),
-                              ),
-
-                              const SizedBox(width: AppSpacing.sm),
-
-                              // Unread Badge or Arrow Icon
-                              if ((_unreadCounts[user.uid] ?? 0) > 0)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: AppSpacing.sm,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    gradient: AppColors.primaryGradient,
-                                    borderRadius: BorderRadius.circular(
-                                      AppRadius.xs,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    _unreadCounts[user.uid].toString(),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                )
-                              else
-                                Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    gradient: AppColors.primaryGradient,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.arrow_forward_ios,
-                                    size: 14,
-                                    color: Colors.white,
                                   ),
                                 ),
-                            ],
+                              );
+                            },
                           ),
                         ),
-                      ),
-                    ),
-                  );
-                },
-              ),
+                ),
+              ],
             ),
       floatingActionButton: _users.isNotEmpty
           ? Container(

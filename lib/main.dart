@@ -13,6 +13,7 @@ import 'package:whatsapp_clone/core/local_db_service.dart';
 import 'package:whatsapp_clone/core/notification_service.dart';
 import 'package:whatsapp_clone/core/app_theme.dart';
 import 'package:whatsapp_clone/providers/providers.dart';
+import 'package:whatsapp_clone/providers/theme_mode_provider.dart';
 import 'firebase_options.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
@@ -53,19 +54,21 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: getAppProviders(),
-      child: MaterialApp(
-        navigatorKey: appNavigatorKey,
-        scaffoldMessengerKey: appScaffoldMessengerKey,
-        title: 'WhatsApp Username Clone',
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
-        themeMode: ThemeMode.system,
-        home: const Root(),
-        routes: {
-          '/login': (_) => const LoginScreen(),
-          '/register': (_) => const RegisterScreen(),
-          '/home': (_) => const HomeScreen(),
-        },
+      child: Consumer<ThemeModeNotifier>(
+        builder: (context, themeNotifier, _) => MaterialApp(
+          navigatorKey: appNavigatorKey,
+          scaffoldMessengerKey: appScaffoldMessengerKey,
+          title: 'WhatsApp Username Clone',
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: themeNotifier.themeMode,
+          home: const Root(),
+          routes: {
+            '/login': (_) => const LoginScreen(),
+            '/register': (_) => const RegisterScreen(),
+            '/home': (_) => const HomeScreen(),
+          },
+        ),
       ),
     );
   }
