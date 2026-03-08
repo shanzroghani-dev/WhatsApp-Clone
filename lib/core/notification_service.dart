@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -7,13 +8,29 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:whatsapp_clone/core/encryption_service.dart';
 import 'package:whatsapp_clone/core/firebase_service.dart';
+import 'package:whatsapp_clone/core/call_ringtone_service.dart';
 import 'package:whatsapp_clone/firebase_options.dart';
+import 'package:whatsapp_clone/chat/call_service.dart';
+import 'package:whatsapp_clone/auth/auth_service.dart';
 
 const AndroidNotificationChannel _defaultChannel = AndroidNotificationChannel(
   'chat_messages',
   'Chat Messages',
   description: 'Notifications for incoming chat messages',
   importance: Importance.high,
+);
+
+const AndroidNotificationChannel _callsChannel = AndroidNotificationChannel(
+  'calls',
+  'Voice and Video Calls',
+  description: 'Notifications for incoming voice and video calls',
+  importance: Importance.max,
+  playSound: true,
+  enableVibration: true,
+  enableLights: true,
+  showBadge: true,
+  sound: RawResourceAndroidNotificationSound('notification'),
+  ledColor: Color(0xFF25D366), // WhatsApp green
 );
 
 String _decryptMessageBody(RemoteMessage message) {
@@ -112,6 +129,7 @@ Future<void> _showBackgroundLocalNotification(RemoteMessage message) async {
         AndroidFlutterLocalNotificationsPlugin
       >();
   await androidPlugin?.createNotificationChannel(_defaultChannel);
+  await androidPlugin?.createNotificationChannel(_callsChannel);
 
   final title =
       message.notification?.title ?? message.data['title'] ?? 'New message';
@@ -120,7 +138,7 @@ Future<void> _showBackgroundLocalNotification(RemoteMessage message) async {
       : 'New message';
 
   await plugin.show(
-    message.messageId?.hashCode ?? DateTime.now().millisecondsSinceEpoch,
+    (message.messageId?.hashCode ?? DateTime.now().millisecondsSinceEpoch) % 2147483647,
     title,
     body,
     NotificationDetails(
@@ -158,6 +176,13 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     print('[FCM] Firebase init in background failed: $e');
   }
 
+  // Check if this is an incoming call notification
+  final messageType = message.data['type']?.toString();
+  if (messageType == 'incoming_call') {
+    await NotificationService._handleIncomingCallNotification(message);
+    return;
+  }
+
   await NotificationService.markDeliveredFromNotification(message);
   await _showBackgroundLocalNotification(message);
 }
@@ -175,6 +200,12 @@ class NotificationService {
 
   static bool _initialized = false;
   static StreamSubscription<String>? _tokenRefreshSubscription;
+  
+  // Track active call notifications to prevent duplicates
+  static final Set<String> _activeCallNotifications = {};
+  
+  // Track call notification timers for auto-dismiss
+  static final Map<String, Timer> _callNotificationTimers = {};
 
   static Future<void> initialize({
     GlobalKey<ScaffoldMessengerState>? scaffoldMessengerKey,
@@ -200,6 +231,15 @@ class NotificationService {
         '[FCM] 📬 FOREGROUND: messageId=${message.messageId}, title=${message.notification?.title}, from=${message.data['senderUID']}',
       );
       print('[FCM] 📬 FOREGROUND DATA: ${message.data}');
+      
+      // Check if this is an incoming call
+      final messageType = message.data['type']?.toString();
+      if (messageType == 'incoming_call') {
+        // Don't show notification in foreground - HomeScreen listener will handle it
+        print('[FCM] ℹ️ Incoming call detected in foreground - skipping notification');
+        return;
+      }
+      
       unawaited(markDeliveredFromNotification(message));
       _handleForegroundMessage(message);
     });
@@ -217,6 +257,14 @@ class NotificationService {
         '[FCM] 📬 OPENED: messageId=${message.messageId}, title=${message.notification?.title}',
       );
       print('[FCM] 📬 OPENED DATA: ${message.data}');
+      
+      // Check if this is an incoming call
+      final messageType = message.data['type']?.toString();
+      if (messageType == 'incoming_call') {
+        // Stop ringtone when app is opened
+        CallRingtoneService().stopRingtone();
+      }
+      
       unawaited(markDeliveredFromNotification(message));
       _navigatorKey?.currentState?.pushNamed('/home');
     });
@@ -240,13 +288,18 @@ class NotificationService {
       iOS: iosInit,
     );
 
-    await _localNotifications.initialize(initSettings);
+    await _localNotifications.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: _onNotificationTap,
+      onDidReceiveBackgroundNotificationResponse: _onNotificationTap,
+    );
 
     final androidPlugin = _localNotifications
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >();
     await androidPlugin?.createNotificationChannel(_defaultChannel);
+    await androidPlugin?.createNotificationChannel(_callsChannel);
   }
 
   static void setCurrentUserUid(String? uid) {
@@ -320,24 +373,255 @@ class NotificationService {
       ),
     );
 
-    await _localNotifications.show(
-      message.messageId?.hashCode ?? DateTime.now().millisecondsSinceEpoch,
-      title,
-      body,
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          _defaultChannel.id,
-          _defaultChannel.name,
-          channelDescription: _defaultChannel.description,
-          importance: Importance.high,
-          priority: Priority.high,
-          playSound: prefs.soundEnabled,
-          enableVibration: prefs.vibrationEnabled,
-        ),
-        iOS: DarwinNotificationDetails(presentSound: prefs.soundEnabled),
+    // Don't show local notification when app is in foreground
+    // Only show SnackBar for better user experience
+  }
+
+  static Future<void> _handleIncomingCallNotification(RemoteMessage message) async {
+    print('[FCM] 📞 Handling incoming call notification');
+    
+    final callId = message.data['callId']?.toString();
+    final initiatorName = message.data['initiatorName']?.toString() ?? 'Unknown';
+    final callType = message.data['callType']?.toString() ?? 'voice';
+    final callTypeLabel = callType == 'video' ? 'Video' : 'Voice';
+    
+    if (callId == null) {
+      print('[FCM] ⚠️ No callId in incoming call notification');
+      return;
+    }
+
+    // Prevent duplicate notifications for the same call
+    if (_activeCallNotifications.contains(callId)) {
+      print('[FCM] ⚠️ Call notification already shown for $callId');
+      return;
+    }
+    _activeCallNotifications.add(callId);
+
+    // Start ringtone
+    await CallRingtoneService().startRingtone(callId);
+
+    // Create Android notification details for call alert
+    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'calls',
+      'Voice and Video Calls',
+      channelDescription: 'Notifications for incoming voice and video calls',
+      importance: Importance.max,
+      priority: Priority.max,
+      playSound: false, // We handle sound via CallRingtoneService
+      enableVibration: true,
+      // Aggressive vibration pattern: silent, vibrate, silent, vibrate, silent, vibrate
+      vibrationPattern: Int64List.fromList([0, 500, 200, 500, 200, 500]),
+      fullScreenIntent: true,
+      category: AndroidNotificationCategory.call,
+      ongoing: true, // Makes notification persistent
+      autoCancel: false, // Never auto-dismiss
+      usesChronometer: true,
+      showWhen: true,
+      when: DateTime.now().millisecondsSinceEpoch,
+      visibility: NotificationVisibility.public,
+      ticker: 'Incoming $callTypeLabel Call',
+      tag: 'call_$callId', // Unique tag prevents duplicate notifications
+      
+      // Make it look more like a native call notification
+      colorized: true,
+      color: const Color(0xFF25D366), // WhatsApp green
+      ledOnMs: 1000,
+      ledOffMs: 3000,
+      
+      // Style configuration for call appearance
+      styleInformation: BigTextStyleInformation(
+        '$initiatorName is calling...',
+        htmlFormatBigText: true,
+        contentTitle: initiatorName,
+        summaryText: 'Incoming $callTypeLabel Call',
       ),
-      payload: message.data.isEmpty ? null : message.data.toString(),
+      
+      // Action buttons for call
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          'accept_call',
+          'Accept',
+          showsUserInterface: true,
+          cancelNotification: false,
+        ),
+        AndroidNotificationAction(
+          'reject_call',
+          'Reject',
+          showsUserInterface: false,
+          cancelNotification: false,
+        ),
+      ],
     );
+
+    // iOS notification with call-specific settings
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      sound: 'default',
+      interruptionLevel: InterruptionLevel.timeSensitive,
+      categoryIdentifier: 'CALL_INVITE',
+    );
+
+    await _localNotifications.show(
+      callId.hashCode.abs() % 2147483647,
+      'Incoming $callTypeLabel Call',
+      initiatorName,
+      NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      ),
+      payload: message.data.toString(),
+    );
+
+    print('[FCM] ✅ Incoming call notification shown with call alert style');
+    
+    // Set a timeout to auto-dismiss the notification after 45 seconds
+    _callNotificationTimers[callId]?.cancel();
+    _callNotificationTimers[callId] = Timer(const Duration(seconds: 45), () {
+      print('[FCM] ⏱️ Call notification timeout for $callId');
+      cancelCallNotification(callId);
+    });
+  }
+
+  @pragma('vm:entry-point')
+  static void _onNotificationTap(NotificationResponse response) {
+    print('[FCM] 📲 Notification tapped: ${response.actionId}, payload: ${response.payload}');
+    
+    if (response.actionId == 'accept_call') {
+      _handleAcceptCall(response.payload);
+    } else if (response.actionId == 'reject_call') {
+      _handleRejectCall(response.payload);
+    } else {
+      // Regular notification tap (no action button)
+      if (response.payload != null && response.payload!.contains('callId')) {
+        _handleAcceptCall(response.payload);
+      } else {
+        _navigatorKey?.currentState?.pushNamed('/home');
+      }
+    }
+  }
+
+  static void _handleAcceptCall(String? payload) async {
+    if (payload == null) return;
+    
+    print('[FCM] 🟢 Processing call acceptance from notification');
+    
+    try {
+      // Parse callId from payload (format: {callId: xxx, ...})
+      final callIdMatch = RegExp(r'callId[:\s]+([a-zA-Z0-9-]+)').firstMatch(payload);
+      if (callIdMatch == null) {
+        print('[FCM] ⚠️ No callId found in payload');
+        return;
+      }
+      
+      final callId = callIdMatch.group(1);
+      if (callId == null) {
+        print('[FCM] ⚠️ Invalid callId');
+        return;
+      }
+      
+      // Cancel timeout timer and cleanup
+      _callNotificationTimers[callId]?.cancel();
+      _callNotificationTimers.remove(callId);
+      _activeCallNotifications.remove(callId);
+      
+      // Stop ringtone
+      await CallRingtoneService().stopRingtone();
+      
+      // Get current user
+      final currentUser = await AuthService.getCurrentUser();
+      if (currentUser == null) {
+        print('[FCM] ⚠️ No current user');
+        _navigatorKey?.currentState?.pushNamedAndRemoveUntil('/home', (route) => false);
+        return;
+      }
+      
+      // Accept the call in Firebase
+      try {
+        await CallService.acceptCall(
+          callId: callId,
+          receiverId: currentUser.uid,
+        );
+        print('[FCM] ✅ Call accepted in Firebase: $callId');
+      } catch (e) {
+        print('[FCM] ⚠️ Error accepting call in Firebase: $e');
+        // Continue anyway - the call might still be joinable from the app
+      }
+      
+      // Navigate to home - let HomeScreen listener handle showing the InCallScreen
+      // This is much more reliable than trying to initialize Agora from a background context
+      _navigatorKey?.currentState?.pushNamedAndRemoveUntil(
+        '/home',
+        (route) => false,
+      );
+      
+      print('[FCM] ✅ Navigated to home');
+      
+    } catch (e) {
+      print('[FCM] ❌ Error accepting call from notification: $e');
+      
+      // On error, just navigate to home
+      _navigatorKey?.currentState?.pushNamedAndRemoveUntil(
+        '/home',
+        (route) => false,
+      );
+    }
+  }
+
+  static void _handleRejectCall(String? payload) async {
+    if (payload == null) return;
+    
+    print('[FCM] 🔴 Processing call rejection from notification');
+    
+    try {
+      // Stop ringtone
+      await CallRingtoneService().stopRingtone();
+      
+      // Parse callId from payload
+      final callIdMatch = RegExp(r'callId[:\s]+([a-zA-Z0-9-]+)').firstMatch(payload);
+      if (callIdMatch == null) {
+        print('[FCM] ⚠️ No callId found in payload');
+        return;
+      }
+      
+      final callId = callIdMatch.group(1);
+      if (callId == null) {
+        print('[FCM] ⚠️ Invalid callId');
+        return;
+      }
+      
+      // Cancel timer and cleanup
+      _callNotificationTimers[callId]?.cancel();
+      _callNotificationTimers.remove(callId);
+      _activeCallNotifications.remove(callId);
+      
+      // Get the call to retrieve initiatorId
+      final call = await CallService.getCall(callId);
+      if (call != null) {
+        // Reject the call in Firebase
+        await CallService.rejectCall(
+          callId: callId,
+          initiatorId: call.initiatorId,
+        );
+        print('[FCM] ✅ Call rejected in Firebase: $callId');
+      }
+      
+    } catch (e) {
+      print('[FCM] ❌ Error rejecting call: $e');
+    }
+  }
+
+  /// Cancel incoming call notification
+  static Future<void> cancelCallNotification(String callId) async {
+    // Cancel the timeout timer if it exists
+    _callNotificationTimers[callId]?.cancel();
+    _callNotificationTimers.remove(callId);
+    
+    await _localNotifications.cancel(callId.hashCode.abs() % 2147483647);
+    await CallRingtoneService().stopRingtone();
+    _activeCallNotifications.remove(callId);
+    print('[FCM] 🚫 Cancelled call notification for $callId');
   }
 
   static Future<void> refreshNotificationPreferences() async {
@@ -359,7 +643,7 @@ class NotificationService {
     }
 
     await _localNotifications.show(
-      DateTime.now().millisecondsSinceEpoch,
+      DateTime.now().millisecondsSinceEpoch % 2147483647,
       'WhatsApp Clone',
       prefs.previewEnabled ? 'This is a test notification' : 'New message',
       NotificationDetails(

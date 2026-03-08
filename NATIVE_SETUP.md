@@ -10,23 +10,36 @@
 - ✅ `google-services.json` downloaded and placed in `android/app/`
 
 #### 2. Build Configuration
-- ✅ **minSdk**: Updated to `21` (required for Firebase)
+- ✅ **minSdk**: Updated to `21` (required for Firebase and Agora SDK)
 - ✅ **multiDexEnabled**: Added for Firebase compatibility
 - ✅ **MultiDex dependency**: `androidx.multidex:multidex:2.0.1`
+- ✅ **ProGuard Rules**: Added for release builds (`android/app/proguard-rules.pro`)
+- ✅ **Release Optimization**: Enabled minification with Agora SDK keep rules
 
 #### 3. Permissions (AndroidManifest.xml)
 - ✅ `INTERNET` - Required for Firebase and network operations
 - ✅ `ACCESS_NETWORK_STATE` - Required for connectivity checks
+- ✅ `RECORD_AUDIO` - Required for voice messages and calls
+- ✅ `CAMERA` - Required for video calls
+- ✅ `MODIFY_AUDIO_SETTINGS` - Required for audio control during calls
+- ✅ `BLUETOOTH` & `BLUETOOTH_CONNECT` - Required for Bluetooth headsets
+- ✅ `WAKE_LOCK` - Keeps screen on during calls
+- ✅ `ACCESS_WIFI_STATE` - Required for network quality monitoring
+- ✅ `POST_NOTIFICATIONS` - Required for push notifications
 
 #### 4. Plugin Support
 - ✅ firebase_core
 - ✅ firebase_auth
 - ✅ cloud_firestore
 - ✅ firebase_database
+- ✅ firebase_storage
+- ✅ cloud_functions
 - ✅ flutter_secure_storage
 - ✅ sqflite
 - ✅ shared_preferences
 - ✅ path_provider
+- ✅ agora_rtc_engine (for voice/video calls)
+- ✅ permission_handler (for runtime permissions)
 
 ### 🍎 iOS Configuration
 
@@ -44,11 +57,41 @@ use_modular_headers!
 #### 3. Permissions (Info.plist)
 - ✅ Network Security Settings (`NSAppTransportSecurity`)
 - ✅ Keychain access (auto-configured by flutter_secure_storage)
+- ✅ `NSMicrophoneUsageDescription` - Required for voice messages and calls
+- ✅ `NSCameraUsageDescription` - Required for video calls
 
 #### 4. Plugin Support
 - ✅ All Firebase plugins configured
 - ✅ flutter_secure_storage with Keychain integration
 - ✅ sqflite for local database
+- ✅ agora_rtc_engine for voice/video calls
+- ✅ permission_handler for runtime permissions
+
+---
+
+## 📞 Voice/Video Calling Setup (Agora SDK)
+
+### Prerequisites
+1. ✅ Agora App ID configured in `lib/core/agora_service.dart`
+2. ✅ Cloud Functions deployed with token generation
+3. ✅ Required permissions added (see Android & iOS sections above)
+
+### Android
+- Runtime permissions requested automatically via `permission_handler`
+- Camera and microphone access granted on first call
+
+### iOS
+- Permission descriptions required in Info.plist (already added)
+- User prompted on first camera/microphone access
+- Ensure iOS deployment target is 13.0+ (see Podfile)
+
+### Testing Calls
+1. Run app on two different devices/emulators
+2. Login with different accounts
+3. Navigate to chat screen
+4. Tap voice 📞 or video 📹 button
+5. Accept call on second device
+6. Verify audio/video streaming works
 
 ### 🌐 Web Configuration
 - ✅ Firebase Web configuration in `firebase_options.dart`
@@ -67,6 +110,12 @@ use_modular_headers!
 - firebase_auth: ^4.10.0
 - firebase_database: ^10.2.0
 - cloud_firestore: ^4.12.0
+- firebase_storage: ^11.5.0
+- cloud_functions: ^4.5.0
+
+### Voice/Video Calling
+- agora_rtc_engine: ^6.2.4
+- permission_handler: ^12.0.1
 
 ### Local Storage
 - sqflite: ^2.2.8

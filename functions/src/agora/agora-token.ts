@@ -45,13 +45,17 @@ export const generateAgoraToken = functions.https.onCall(
 
     try {
       // Generate token
+      const currentTimestamp = Math.floor(Date.now() / 1000);
+      const expireTime = currentTimestamp + TOKEN_EXPIRY;
+      
       const token = RtcTokenBuilder.buildTokenWithUid(
         AGORA_APP_ID,
         AGORA_APP_CERTIFICATE,
         channelName,
         uid,
         role,
-        Math.floor(Date.now() / 1000) + TOKEN_EXPIRY
+        expireTime,
+        expireTime
       );
 
       console.log(
@@ -96,13 +100,17 @@ export const generateCallToken = functions.https.onCall(
     }
 
     try {
+      const currentTimestamp = Math.floor(Date.now() / 1000);
+      const expireTime = currentTimestamp + TOKEN_EXPIRY;
+      
       const token = RtcTokenBuilder.buildTokenWithUid(
         AGORA_APP_ID,
         AGORA_APP_CERTIFICATE,
         callId, // Use callId as channel name
         uid,
         RtcRole.PUBLISHER,
-        Math.floor(Date.now() / 1000) + TOKEN_EXPIRY
+        expireTime,
+        expireTime
       );
 
       console.log(

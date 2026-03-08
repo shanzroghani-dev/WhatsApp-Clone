@@ -9,7 +9,9 @@ import 'package:provider/provider.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:whatsapp_clone/chat/call_service.dart';
 import 'package:whatsapp_clone/chat/chat_service.dart';
+import 'package:whatsapp_clone/core/agora_service.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
 import 'package:whatsapp_clone/core/firebase_service.dart';
 import 'package:whatsapp_clone/core/local_db_service.dart';
@@ -27,6 +29,7 @@ import 'package:whatsapp_clone/screens/chat/voice_message_handler.dart';
 import 'package:whatsapp_clone/screens/chat/media_handler.dart';
 import 'package:whatsapp_clone/screens/chat/message_builder.dart';
 import 'package:whatsapp_clone/screens/user_profile_screen.dart';
+import 'package:whatsapp_clone/screens/call/enhanced_in_call_screen.dart';
 
 class ChatScreenState extends State<ChatScreen>
     with VoiceMessageHandler, MediaHandler, MessageBuilder {
@@ -222,6 +225,82 @@ class ChatScreenState extends State<ChatScreen>
     _messagesProvider.setOnTempMessageInserted(null);
 
     super.dispose();
+  }
+
+  Future<void> _initiateCall(String callType) async {
+    try {
+      // Initiate call in Firebase
+      final call = await CallService.initiateCall(
+        initiatorId: widget.currentUser.uid,
+        initiatorName: widget.currentUser.displayName,
+        initiatorProfilePic: widget.currentUser.profilePic,
+        receiverId: widget.peer.uid,
+        receiverName: widget.peer.displayName,
+        receiverProfilePic: widget.peer.profilePic,
+        callType: callType,
+      );
+
+      if (!mounted) return;
+
+      // Convert user IDs to integers for Agora (using hashCode)
+      final localUid = widget.currentUser.uid.hashCode.abs() % 2147483647;
+      final remoteUid = widget.peer.uid.hashCode.abs() % 2147483647;
+
+      // Get Agora token from Cloud Function
+      final token = await CallService.getAgoraToken(
+        channelName: call.callId,
+        uid: localUid,
+      );
+
+      // Initialize and setup Agora service
+      final agoraService = AgoraService();
+      await agoraService.initialize();
+      await agoraService.joinChannel(
+        channelName: call.callId,
+        uid: localUid,
+        token: token,
+        isVideoCall: callType == 'video',
+      );
+
+      if (!mounted) return;
+
+      // Navigate to in-call screen
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => EnhancedInCallScreen(
+            callModel: call,
+            agoraService: agoraService,
+            remoteUid: remoteUid,
+            onEndCall: () async {
+              try {
+                await CallService.endCall(
+                  callId: call.callId,
+                  endReason: 'user_ended',
+                );
+                await agoraService.dispose();
+              } catch (e) {
+                print('[ChatScreen] Error in onEndCall: $e');
+              }
+              
+              // Safely pop after current frame
+              if (context.mounted) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (context.mounted && Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                  }
+                });
+              }
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      print('[ChatScreen] Error initiating call: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to initiate call: $e')),
+      );
+    }
   }
 
   void _onComposerChanged() {
@@ -859,6 +938,19 @@ class ChatScreenState extends State<ChatScreen>
             ],
           ),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.call),
+            onPressed: () => _initiateCall('voice'),
+            tooltip: 'Voice call',
+          ),
+          IconButton(
+            icon: const Icon(Icons.videocam),
+            onPressed: () => _initiateCall('video'),
+            tooltip: 'Video call',
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: Column(
         children: [

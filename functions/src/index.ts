@@ -1,12 +1,14 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { onValueCreated, onValueUpdated } from 'firebase-functions/v2/database';
+import { onDocumentCreated, onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import * as admin from 'firebase-admin';
 import { AppModule } from './app.module';
 import { MessagesTriggerService } from './messages/messages-trigger.service';
 import { MessageReadTriggerService } from './messages/message-read-trigger.service';
 import { MessagesCleanupService } from './messages/messages-cleanup.service';
+import { CallTriggerService } from './calls/call-trigger.service';
 import { generateAgoraToken, generateCallToken } from './agora/agora-token';
 
 // Initialize Firebase Admin globally before anything else
@@ -17,6 +19,7 @@ if (!admin.apps.length) {
 let messagesTriggerPromise: Promise<MessagesTriggerService> | null = null;
 let messageReadTriggerPromise: Promise<MessageReadTriggerService> | null = null;
 let cleanupServicePromise: Promise<MessagesCleanupService> | null = null;
+let callTriggerPromise: Promise<CallTriggerService> | null = null;
 
 async function getMessagesTriggerService(): Promise<MessagesTriggerService> {
   if (!messagesTriggerPromise) {
@@ -43,6 +46,15 @@ async function getCleanupService(): Promise<MessagesCleanupService> {
     );
   }
   return cleanupServicePromise;
+}
+
+async function getCallTriggerService(): Promise<CallTriggerService> {
+  if (!callTriggerPromise) {
+    callTriggerPromise = NestFactory.createApplicationContext(AppModule).then((app) =>
+      app.get(CallTriggerService),
+    );
+  }
+  return callTriggerPromise;
 }
 
 export const onChatMessageCreated = onValueCreated(
@@ -77,6 +89,30 @@ export const cleanupOldMessages = onSchedule(
     });
     const service = await getCleanupService();
     await service.deleteOldDeliveredMessages();
+  },
+);
+
+// Trigger when a call is created in Firestore - send push notification
+export const onCallCreated = onDocumentCreated(
+  {
+    document: 'calls/{callId}',
+    region: 'us-central1',
+  },
+  async (event) => {
+    const service = await getCallTriggerService();
+    await service.onCallCreated(event.data!);
+  },
+);
+
+// Trigger when a call is updated in Firestore - handle status changes
+export const onCallUpdated = onDocumentUpdated(
+  {
+    document: 'calls/{callId}',
+    region: 'us-central1',
+  },
+  async (event) => {
+    const service = await getCallTriggerService();
+    await service.onCallUpdated(event.data!.before, event.data!.after);
   },
 );
 

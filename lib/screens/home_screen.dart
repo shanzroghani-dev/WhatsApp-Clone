@@ -1,5 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:whatsapp_clone/auth/auth_service.dart';
+import 'package:whatsapp_clone/chat/call_service.dart';
+import 'package:whatsapp_clone/core/agora_service.dart';
 import 'package:whatsapp_clone/core/security_service.dart';
+import 'package:whatsapp_clone/models/call_model.dart';
+import 'package:whatsapp_clone/screens/call/incoming_call_screen.dart';
+import 'package:whatsapp_clone/screens/call/enhanced_in_call_screen.dart';
+import 'call_history_screen.dart';
 import 'chat_list.dart';
 import 'profile_screen.dart';
 import 'security_unlock_screen.dart';
@@ -14,9 +23,11 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _currentIndex = 0;
   bool _isUnlockDialogOpen = false;
+  StreamSubscription<CallModel>? _incomingCallSubscription;
 
   late final List<Widget> _screens = [
     const ChatListScreen(),
+    const CallHistoryScreen(),
     const ProfileScreen(),
   ];
 
@@ -26,11 +37,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensureUnlocked();
+      _initializeCallListener();
     });
   }
 
   @override
   void dispose() {
+    _incomingCallSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -40,6 +53,239 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _ensureUnlocked();
     }
+  }
+
+  Future<void> _initializeCallListener() async {
+    try {
+      final user = await AuthService.getCurrentUser();
+      if (user == null || !mounted) return;
+
+      _incomingCallSubscription = CallService
+          .listenForIncomingCalls(user.uid)
+          .listen((call) {
+        if (!mounted) return;
+        
+        // If call is ringing, show incoming call screen
+        if (call.status == 'ringing') {
+          _showIncomingCallScreen(call);
+        }
+        // If call is already active (e.g., accepted from notification), join it directly
+        else if (call.status == 'active' && call.answeredAt != null) {
+          _joinActiveCall(call);
+        }
+      });
+    } catch (e) {
+      print('[HomeScreen] Error initializing call listener: $e');
+    }
+  }
+
+  Future<void> _joinActiveCall(CallModel call) async {
+    try {
+      print('[HomeScreen] Joining active call: ${call.callId}');
+      
+      // Get current user
+      final currentUser = await AuthService.getCurrentUser();
+      if (currentUser == null || !mounted) return;
+
+      // Convert user IDs to integers for Agora
+      final localUid = currentUser.uid.hashCode.abs() % 2147483647;
+      final remoteUid = call.initiatorId.hashCode.abs() % 2147483647;
+
+      // Show loading indicator
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const AlertDialog(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Connecting to call...'),
+              ],
+            ),
+          ),
+        );
+      }
+
+      try {
+        // Get Agora token with timeout error handling
+        final token = await CallService.getAgoraToken(
+          channelName: call.callId,
+          uid: localUid,
+        );
+
+        // Initialize and setup Agora service
+        final agoraService = AgoraService();
+        await agoraService.initialize();
+        await agoraService.joinChannel(
+          channelName: call.callId,
+          uid: localUid,
+          token: token,
+          isVideoCall: call.callType == 'video',
+        );
+
+        if (!mounted) return;
+
+        // Close loading dialog
+        Navigator.of(context).pop();
+
+        // Navigate to in-call screen
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => EnhancedInCallScreen(
+              callModel: call,
+              agoraService: agoraService,
+              remoteUid: remoteUid,
+              onEndCall: () async {
+                try {
+                  await CallService.endCall(
+                    callId: call.callId,
+                    endReason: 'user_ended',
+                  );
+                  await agoraService.dispose();
+                } catch (e) {
+                  print('[HomeScreen] Error in onEndCall: $e');
+                }
+                
+                // Safely pop after current frame
+                if (context.mounted) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (context.mounted && Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    }
+                  });
+                }
+              },
+            ),
+          ),
+        );
+      } catch (e) {
+        // Close loading dialog if still open
+        if (mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+
+        // Error handling
+        print('[HomeScreen] Error joining call: $e');
+        final errorMessage = e.toString().contains('timed out')
+            ? 'Connection timeout. Please check your internet and try again.'
+            : e.toString().contains('token')
+                ? 'Failed to get call credentials. Please try again.'
+                : 'Failed to join call. Please try again.';
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('[HomeScreen] Unexpected error in _joinActiveCall: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('An unexpected error occurred')),
+        );
+      }
+    }
+  }
+
+  void _showIncomingCallScreen(CallModel call) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => IncomingCallScreen(
+          incomingCall: call,
+          onAccept: () async {
+            try {
+              Navigator.of(context).pop();
+              
+              // Accept the call in Firebase
+              await CallService.acceptCall(
+                callId: call.callId,
+                receiverId: call.receiverId,
+              );
+
+              // Get current user to determine local/remote UIDs
+              final currentUser = await AuthService.getCurrentUser();
+              if (currentUser == null || !mounted) return;
+
+              // Convert user IDs to integers for Agora (using hashCode)
+              final localUid = currentUser.uid.hashCode.abs() % 2147483647;
+              final remoteUid = call.initiatorId.hashCode.abs() % 2147483647;
+
+              // Get Agora token from Cloud Function
+              final token = await CallService.getAgoraToken(
+                channelName: call.callId,
+                uid: localUid,
+              );
+
+              // Initialize and setup Agora service
+              final agoraService = AgoraService();
+              await agoraService.initialize();
+              await agoraService.joinChannel(
+                channelName: call.callId,
+                uid: localUid,
+                token: token,
+                isVideoCall: call.callType == 'video',
+              );
+
+              if (!mounted) return;
+
+              // Navigate to in-call screen
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => EnhancedInCallScreen(
+                    callModel: call,
+                    agoraService: agoraService,
+                    remoteUid: remoteUid,
+                    onEndCall: () async {
+                      try {
+                        await CallService.endCall(
+                          callId: call.callId,
+                          endReason: 'user_ended',
+                        );
+                        await agoraService.dispose();
+                      } catch (e) {
+                        print('[HomeScreen] Error in onEndCall: $e');
+                      }
+                      
+                      // Safely pop after current frame
+                      if (context.mounted) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (context.mounted && Navigator.of(context).canPop()) {
+                            Navigator.of(context).pop();
+                          }
+                        });
+                      }
+                    },
+                  ),
+                ),
+              );
+            } catch (e) {
+              print('[HomeScreen] Error accepting call: $e');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Failed to join call: $e')),
+                );
+              }
+            }
+          },
+          onReject: () async {
+            Navigator.of(context).pop();
+            await CallService.rejectCall(
+              callId: call.callId,
+              initiatorId: call.initiatorId,
+            );
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _ensureUnlocked() async {
@@ -75,6 +321,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           BottomNavigationBarItem(
             icon: const Icon(Icons.chat),
             label: 'Chats',
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.phone),
+            label: 'Calls',
             backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           ),
           BottomNavigationBarItem(

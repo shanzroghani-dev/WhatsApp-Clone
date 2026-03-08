@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:whatsapp_clone/models/call_model.dart';
-import 'package:whatsapp_clone/core/design_tokens.dart';
-import 'package:whatsapp_clone/utils/date_time_utils.dart';
 
 class CallHistoryScreen extends StatefulWidget {
   final String currentUserId;
@@ -41,6 +39,23 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
       final hours = seconds ~/ 3600;
       final mins = (seconds % 3600) ~/ 60;
       return '${hours}h ${mins}m';
+    }
+  }
+
+  String _formatTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inSeconds < 60) {
+      return 'just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}m ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d ago';
+    } else {
+      return '${dateTime.month}/${dateTime.day}/${dateTime.year}';
     }
   }
 
@@ -129,7 +144,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
                       ),
                       const SizedBox(width: 16),
                       Text(
-                        DateTimeUtils.formatTimeAgo(call.initiatedAt),
+                        _formatTime(call.initiatedAt),
                         style: const TextStyle(fontSize: 12),
                       ),
                     ],

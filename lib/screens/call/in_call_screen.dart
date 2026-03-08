@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:whatsapp_clone/models/call_model.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
 import 'package:whatsapp_clone/core/agora_service.dart';
+import 'package:whatsapp_clone/chat/call_service.dart';
 
 class InCallScreen extends StatefulWidget {
   final CallModel callModel;
@@ -24,23 +26,64 @@ class InCallScreen extends StatefulWidget {
 }
 
 class _InCallScreenState extends State<InCallScreen> {
-  late RtcEngine _engine;
   bool _isVideoVisible = true;
   Duration _callDuration = Duration.zero;
   late Stopwatch _stopwatch;
+  StreamSubscription<CallModel?>? _callStatusSubscription;
+  bool _isEndingCall = false;
+  bool _timerStarted = false;
 
   @override
   void initState() {
     super.initState();
-    _engine =
-        RtcEngineContext(
-              appId: widget.agoraService.runtimeType.toString(),
-            ).createAgoraRtcEngine()
-            as RtcEngine;
-    _stopwatch = Stopwatch()..start();
+    _stopwatch = Stopwatch();
+
+    // Start timer if call already answered, otherwise wait for answer
+    if (widget.callModel.answeredAt != null) {
+      _startTimer();
+    }
 
     // Update call duration every second
     Future.delayed(const Duration(seconds: 1), _updateDuration);
+
+    // Listen to call status changes
+    _callStatusSubscription = CallService.listenToCall(widget.callModel.callId).listen((call) {
+      if (call == null || call.status == 'ended' || call.status == 'rejected') {
+        // Call ended by other party, close screen without calling endCall again
+        if (mounted && !_isEndingCall) {
+          _isEndingCall = true;
+          _handleRemoteCallEnd();
+        }
+      } else if (!_timerStarted && call.answeredAt != null) {
+        // Call was answered, start the timer
+        _startTimer();
+      }
+    });
+  }
+
+  void _startTimer() {
+    if (_timerStarted) return;
+    _timerStarted = true;
+    _stopwatch.start();
+    setState(() {});
+  }
+
+  void _handleRemoteCallEnd() async {
+    try {
+      // Just dispose Agora, don't end call (already ended by other party)
+      await widget.agoraService.dispose();
+    } catch (e) {
+      print('[InCallScreen] Error disposing: $e');
+    }
+    
+    // Safely pop after current frame
+    if (mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+      });
+    }
   }
 
   void _updateDuration() {
@@ -55,6 +98,7 @@ class _InCallScreenState extends State<InCallScreen> {
   @override
   void dispose() {
     _stopwatch.stop();
+    _callStatusSubscription?.cancel();
     super.dispose();
   }
 
@@ -71,16 +115,12 @@ class _InCallScreenState extends State<InCallScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final isVideoCall = widget.callModel.callType == 'video';
 
-    return WillPopScope(
-      onWillPop: () async => false,
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: Stack(
-          children: [
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
             // Video/Audio area
             if (isVideoCall)
               Container(
@@ -89,7 +129,7 @@ class _InCallScreenState extends State<InCallScreen> {
                   child: _isVideoVisible
                       ? AgoraVideoView(
                           controller: VideoViewController(
-                            rtcEngine: _engine,
+                            rtcEngine: widget.agoraService.engine,
                             canvas: const VideoCanvas(uid: 0),
                           ),
                         )
@@ -222,14 +262,6 @@ class _InCallScreenState extends State<InCallScreen> {
                         ),
                       ),
 
-                      // End call button
-                      FloatingActionButton(
-                        onPressed: widget.onEndCall,
-                        backgroundColor: Colors.red,
-                        heroTag: 'end_btn',
-                        child: const Icon(Icons.call_end),
-                      ),
-
                       // Toggle video button (only for video calls)
                       if (isVideoCall)
                         FloatingActionButton(
@@ -249,6 +281,25 @@ class _InCallScreenState extends State<InCallScreen> {
                           ),
                         ),
 
+                      // End call button
+                      FloatingActionButton(
+                        onPressed: widget.onEndCall,
+                        backgroundColor: Colors.red,
+                        heroTag: 'end_btn',
+                        child: const Icon(Icons.call_end),
+                      ),
+
+                      // Switch camera button (only for video calls)
+                      if (isVideoCall)
+                        FloatingActionButton(
+                          onPressed: () async {
+                            await widget.agoraService.switchCamera();
+                          },
+                          backgroundColor: Colors.grey.shade700,
+                          heroTag: 'switch_camera_btn',
+                          child: const Icon(Icons.flip_camera_ios),
+                        ),
+
                       // Speaker button
                       FloatingActionButton(
                         onPressed: () async {
@@ -263,7 +314,7 @@ class _InCallScreenState extends State<InCallScreen> {
                         child: Icon(
                           widget.agoraService.isSpeakerEnabled
                               ? Icons.speaker
-                              : Icons.speaker_off,
+                              : Icons.volume_off,
                         ),
                       ),
                     ],
@@ -273,7 +324,6 @@ class _InCallScreenState extends State<InCallScreen> {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 }

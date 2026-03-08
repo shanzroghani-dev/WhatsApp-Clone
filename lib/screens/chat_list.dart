@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:whatsapp_clone/auth/auth_service.dart';
@@ -161,6 +162,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   void _openChat(UserModel peer) {
     if (_currentUser == null) return;
+    HapticFeedback.lightImpact();
     // Clear unread count when opening chat
     setState(() {
       _unreadCounts[peer.uid] = 0;
@@ -226,6 +228,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   void _showDeleteChatDialog(UserModel user) {
     if (_currentUser == null) return;
+    HapticFeedback.mediumImpact();
 
     showDialog(
       context: context,
@@ -568,7 +571,94 @@ class _ChatListScreenState extends State<ChatListScreen> {
                               final lastMessage =
                                   _lastMessageByUid[user.uid] ?? '';
 
-                              return Container(
+                              return Dismissible(
+                                key: Key(user.uid),
+                                direction: DismissDirection.endToStart,
+                                confirmDismiss: (direction) async {
+                                  HapticFeedback.mediumImpact();
+                                  return await showDialog<bool>(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(AppRadius.md),
+                                      ),
+                                      title: Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(AppSpacing.sm),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.error.withValues(alpha: 0.1),
+                                              borderRadius: BorderRadius.circular(AppRadius.xs),
+                                            ),
+                                            child: Icon(
+                                              Icons.delete_rounded,
+                                              color: AppColors.error,
+                                              size: 24,
+                                            ),
+                                          ),
+                                          const SizedBox(width: AppSpacing.md),
+                                          const Text('Delete Chat'),
+                                        ],
+                                      ),
+                                      content: Text('Delete this chat with ${user.displayName}?'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context, false),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        Container(
+                                          decoration: BoxDecoration(
+                                            color: AppColors.error,
+                                            borderRadius: BorderRadius.circular(AppRadius.sm),
+                                          ),
+                                          child: TextButton(
+                                            onPressed: () => Navigator.pop(context, true),
+                                            child: const Text(
+                                              'Delete',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ) ?? false;
+                                },
+                                onDismissed: (direction) {
+                                  HapticFeedback.heavyImpact();
+                                  _deleteChatForMe(user);
+                                },
+                                background: Container(
+                                  margin: const EdgeInsets.only(bottom: AppSpacing.md),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.error,
+                                    borderRadius: BorderRadius.circular(AppRadius.md),
+                                  ),
+                                  alignment: Alignment.centerRight,
+                                  padding: const EdgeInsets.only(right: AppSpacing.xl),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(
+                                        Icons.delete_rounded,
+                                        color: Colors.white,
+                                        size: 32,
+                                      ),
+                                      const SizedBox(height: AppSpacing.xs),
+                                      Text(
+                                        'Delete',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                child: Container(
                                 margin: const EdgeInsets.only(
                                   bottom: AppSpacing.md,
                                 ),
@@ -807,7 +897,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                     ),
                                   ),
                                 ),
-                              );
+                              ));
                             },
                           ),
                         ),

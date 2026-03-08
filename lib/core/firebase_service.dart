@@ -241,10 +241,10 @@ class FirebaseService {
   }
 
   static String _generateCandidateUserNumber() {
-    final length = 8 + _random.nextInt(5);
-    final firstDigit = 1 + _random.nextInt(9);
-    final buffer = StringBuffer()..write(firstDigit);
-    for (var i = 1; i < length; i++) {
+    // Generate unique number with format: 0380 + 7 random digits
+    // Example: 03809050650
+    final buffer = StringBuffer('0380');
+    for (var i = 0; i < 7; i++) {
       buffer.write(_random.nextInt(10));
     }
     return buffer.toString();

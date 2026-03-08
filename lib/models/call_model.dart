@@ -14,6 +14,9 @@ class CallModel {
   final int durationSeconds;
   final String?
   endReason; // 'user_ended', 'no_answer', 'rejected', 'network_error'
+  final int? avgNetworkQuality; // 0-6 scale (0=Unknown, 1=Excellent, 6=Disconnected)
+  final double? avgBitrate; // Average bitrate in kbps
+  final bool? wasAnswered; // true if call was answered, false if missed/rejected
 
   CallModel({
     required this.callId,
@@ -30,6 +33,9 @@ class CallModel {
     required this.status,
     this.durationSeconds = 0,
     this.endReason,
+    this.avgNetworkQuality,
+    this.avgBitrate,
+    this.wasAnswered,
   });
 
   CallModel copyWith({
@@ -47,6 +53,9 @@ class CallModel {
     String? status,
     int? durationSeconds,
     String? endReason,
+    int? avgNetworkQuality,
+    double? avgBitrate,
+    bool? wasAnswered,
   }) {
     return CallModel(
       callId: callId ?? this.callId,
@@ -63,6 +72,9 @@ class CallModel {
       status: status ?? this.status,
       durationSeconds: durationSeconds ?? this.durationSeconds,
       endReason: endReason ?? this.endReason,
+      avgNetworkQuality: avgNetworkQuality ?? this.avgNetworkQuality,
+      avgBitrate: avgBitrate ?? this.avgBitrate,
+      wasAnswered: wasAnswered ?? this.wasAnswered,
     );
   }
 
@@ -81,6 +93,9 @@ class CallModel {
     'status': status,
     'durationSeconds': durationSeconds,
     'endReason': endReason,
+    'avgNetworkQuality': avgNetworkQuality,
+    'avgBitrate': avgBitrate,
+    'wasAnswered': wasAnswered,
   };
 
   factory CallModel.fromJson(Map<String, dynamic> json) => CallModel(
@@ -104,5 +119,8 @@ class CallModel {
     status: json['status'] as String,
     durationSeconds: json['durationSeconds'] as int? ?? 0,
     endReason: json['endReason'] as String?,
+    avgNetworkQuality: json['avgNetworkQuality'] as int?,
+    avgBitrate: (json['avgBitrate'] as num?)?.toDouble(),
+    wasAnswered: json['wasAnswered'] as bool?,
   );
 }

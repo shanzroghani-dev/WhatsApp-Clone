@@ -51,6 +51,8 @@
 		<true/>
 	</dict>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Allow microphone access to record voice messages.</string>
+	<string>Allow microphone access to record voice messages and make voice/video calls.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Allow camera access to make video calls.</string>
 </dict>
 </plist>
