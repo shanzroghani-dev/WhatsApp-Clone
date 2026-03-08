@@ -7,6 +7,7 @@ import { AppModule } from './app.module';
 import { MessagesTriggerService } from './messages/messages-trigger.service';
 import { MessageReadTriggerService } from './messages/message-read-trigger.service';
 import { MessagesCleanupService } from './messages/messages-cleanup.service';
+import { generateAgoraToken, generateCallToken } from './agora/agora-token';
 
 // Initialize Firebase Admin globally before anything else
 if (!admin.apps.length) {
@@ -78,3 +79,6 @@ export const cleanupOldMessages = onSchedule(
     await service.deleteOldDeliveredMessages();
   },
 );
+
+// Export Agora token generation functions
+export { generateAgoraToken, generateCallToken };
