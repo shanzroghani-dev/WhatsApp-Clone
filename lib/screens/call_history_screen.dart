@@ -312,10 +312,6 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
   }
 
   void _showCallContextMenu(CallModel call) {
-    final direction = _getCallDirection(call);
-    final isOutgoing = direction == 'outgoing';
-    final contactName = isOutgoing ? call.receiverName : call.initiatorName;
-
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
