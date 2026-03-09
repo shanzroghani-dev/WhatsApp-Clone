@@ -17,6 +17,24 @@ class CallService {
   static final Map<String, Timer> _callTimeoutTimers = {};
   static final Set<String> _cancelledCalls = {}; // Track calls already cancelled
 
+  /// Deterministic Agora UID derived from user ID.
+  /// Avoids using `hashCode`, which can differ across app runs/devices.
+  static int agoraUidFromUserId(String userId) {
+    const int fnvOffset = 0x811C9DC5;
+    const int fnvPrime = 0x01000193;
+
+    int hash = fnvOffset;
+    for (final codeUnit in userId.codeUnits) {
+      hash ^= codeUnit;
+      hash = (hash * fnvPrime) & 0x7fffffff;
+    }
+
+    if (hash == 0) {
+      return 1;
+    }
+    return hash;
+  }
+
   /// Get Agora token from Cloud Function
   static Future<String> getAgoraToken({
     required String channelName,
@@ -68,7 +86,7 @@ class CallService {
           agoraToken ??
           await getAgoraToken(
             channelName: callId,
-            uid: initiatorId.hashCode % 100000,
+            uid: agoraUidFromUserId(initiatorId),
           );
 
       final callData = {
@@ -84,8 +102,8 @@ class CallService {
         'initiatedAt': now.millisecondsSinceEpoch,
         'agoraToken': token,
         'agoraChannel': callId,
-        'initiatorUid': initiatorId.hashCode % 100000,
-        'receiverUid': receiverId.hashCode % 100000,
+        'initiatorUid': agoraUidFromUserId(initiatorId),
+        'receiverUid': agoraUidFromUserId(receiverId),
       };
 
       // Save to Firestore
@@ -132,9 +150,23 @@ class CallService {
         }
 
         print('[CallService] ⏱️ Call timeout triggered for $callId');
-        _cancelledCalls.add(callId);
 
         try {
+          final latestCall = await getCall(callId);
+          if (latestCall == null) {
+            print('[CallService] Call $callId no longer exists, skipping timeout');
+            return;
+          }
+
+          if (latestCall.status != 'ringing' || latestCall.answeredAt != null) {
+            print(
+              '[CallService] Call $callId already ${latestCall.status}, skipping no_answer timeout',
+            );
+            return;
+          }
+
+          _cancelledCalls.add(callId);
+
           // Auto-end the call with 'no_answer' reason
           await endCall(callId: callId, endReason: 'no_answer');
           print('[CallService] ✅ Call auto-ended due to timeout: $callId');
@@ -335,6 +367,46 @@ class CallService {
           if (!snapshot.exists) return null;
           return CallModel.fromJson({...snapshot.data()!, 'docId': snapshot.id});
         });
+  }
+
+  /// Get the active call for a user (ringing or active status)
+  static Future<CallModel?> getActiveCall(String userId) async {
+    try {
+      // Check if user is the initiator of an active call
+      final initiatorQuery = await _firestore
+          .collection(_callsCollection)
+          .where('initiatorId', isEqualTo: userId)
+          .where('status', whereIn: ['ringing', 'active'])
+          .limit(1)
+          .get();
+
+      if (initiatorQuery.docs.isNotEmpty) {
+        return CallModel.fromJson({
+          ...initiatorQuery.docs.first.data(),
+          'docId': initiatorQuery.docs.first.id,
+        });
+      }
+
+      // Check if user is the receiver of an active call
+      final receiverQuery = await _firestore
+          .collection(_callsCollection)
+          .where('receiverId', isEqualTo: userId)
+          .where('status', whereIn: ['ringing', 'active'])
+          .limit(1)
+          .get();
+
+      if (receiverQuery.docs.isNotEmpty) {
+        return CallModel.fromJson({
+          ...receiverQuery.docs.first.data(),
+          'docId': receiverQuery.docs.first.id,
+        });
+      }
+
+      return null;
+    } catch (e) {
+      print('[CallService] Error getting active call: $e');
+      return null;
+    }
   }
 
   /// Get call history for a user

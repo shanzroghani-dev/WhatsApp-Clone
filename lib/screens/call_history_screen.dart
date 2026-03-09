@@ -294,7 +294,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
                 HapticFeedback.lightImpact();
                 _initiateCallFromHistory(call, call.callType);
               },
-              tooltip: 'Call ${contactName}',
+              tooltip: 'Call $contactName',
             ),
           ],
         ),
@@ -503,10 +503,26 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Starting call...'),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
 
     try {
+      print('[CallHistory] Initiating ${callType} call from history...');
+      
       // Initiate call
       final call = await CallService.initiateCall(
         initiatorId: currentUser.uid,
@@ -517,34 +533,41 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
         receiverProfilePic: receiverProfilePic,
         callType: callType,
       );
+      print('[CallHistory] Call created: ${call.callId}');
 
       if (!mounted) return;
 
-      // Close loading dialog
-      Navigator.of(context).pop();
-
       // Get Agora token
-      final localUid = currentUser.uid.hashCode.abs() % 2147483647;
-      final remoteUid = receiverId.hashCode.abs() % 2147483647;
+      final localUid = CallService.agoraUidFromUserId(currentUser.uid);
+      final remoteUid = CallService.agoraUidFromUserId(receiverId);
+      print('[CallHistory] Local UID: $localUid, Remote UID: $remoteUid');
 
       final token = await CallService.getAgoraToken(
         channelName: call.callId,
         uid: localUid,
       );
+      print('[CallHistory] Got Agora token');
 
       // Initialize Agora service
       final agoraService = AgoraService();
       await agoraService.initialize();
+      print('[CallHistory] Agora initialized');
+      
       await agoraService.joinChannel(
         channelName: call.callId,
         uid: localUid,
         token: token,
         isVideoCall: callType == 'video',
       );
+      print('[CallHistory] Joined Agora channel');
 
       if (!mounted) return;
 
+      // Close loading dialog
+      Navigator.of(context).pop();
+
       // Navigate to in-call screen
+      print('[CallHistory] Navigating to call screen...');
       await Navigator.of(context).push(
         MaterialPageRoute(
           fullscreenDialog: true,
@@ -570,14 +593,21 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
           ),
         ),
       );
+      print('[CallHistory] Returned from call screen');
     } catch (e) {
+      print('[CallHistory] Error initiating call from history: $e');
+      print('[CallHistory] Error type: ${e.runtimeType}');
+      
       if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop(); // Close loading dialog
       }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to initiate call: $e')),
+          SnackBar(
+            content: Text('Failed to start call: ${e.toString()}'),
+            duration: const Duration(seconds: 4),
+          ),
         );
       }
     }
@@ -800,10 +830,26 @@ class _DialPadWidgetState extends State<DialPadWidget> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Starting call...'),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
 
     try {
+      print('[CallHistory] Initiating ${callType} call...');
+      
       // Initiate call
       final call = await CallService.initiateCall(
         initiatorId: _currentUser!.uid,
@@ -814,37 +860,44 @@ class _DialPadWidgetState extends State<DialPadWidget> {
         receiverProfilePic: _foundUser!.profilePic,
         callType: callType,
       );
+      print('[CallHistory] Call created: ${call.callId}');
 
       if (!mounted) return;
 
-      // Close loading dialog
-      Navigator.of(context).pop();
-
       // Get Agora token
-      final localUid = _currentUser!.uid.hashCode.abs() % 2147483647;
-      final remoteUid = _foundUser!.uid.hashCode.abs() % 2147483647;
+      final localUid = CallService.agoraUidFromUserId(_currentUser!.uid);
+      final remoteUid = CallService.agoraUidFromUserId(_foundUser!.uid);
+      print('[CallHistory] Local UID: $localUid, Remote UID: $remoteUid');
 
       final token = await CallService.getAgoraToken(
         channelName: call.callId,
         uid: localUid,
       );
+      print('[CallHistory] Got Agora token');
 
       // Initialize Agora service
       final agoraService = AgoraService();
       await agoraService.initialize();
+      print('[CallHistory] Agora initialized');
+      
       await agoraService.joinChannel(
         channelName: call.callId,
         uid: localUid,
         token: token,
         isVideoCall: callType == 'video',
       );
+      print('[CallHistory] Joined Agora channel');
 
       if (!mounted) return;
+
+      // Close loading dialog
+      Navigator.of(context).pop();
 
       // Close dial pad
       Navigator.of(context).pop();
 
       // Navigate to in-call screen
+      print('[CallHistory] Navigating to call screen...');
       await Navigator.of(context).push(
         MaterialPageRoute(
           fullscreenDialog: true,
@@ -870,14 +923,21 @@ class _DialPadWidgetState extends State<DialPadWidget> {
           ),
         ),
       );
+      print('[CallHistory] Returned from call screen');
     } catch (e) {
+      print('[CallHistory] Error initiating call: $e');
+      print('[CallHistory] Error type: ${e.runtimeType}');
+      
       if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop(); // Close loading dialog
       }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to initiate call: $e')),
+          SnackBar(
+            content: Text('Failed to start call: ${e.toString()}'),
+            duration: const Duration(seconds: 4),
+          ),
         );
       }
     }

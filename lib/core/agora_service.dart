@@ -39,6 +39,9 @@ class AgoraService extends ChangeNotifier {
   RtcEngine get engine => _engine;
 
   Future<void> initialize() async {
+    if (_isDisposed) {
+      throw Exception('Cannot initialize a disposed AgoraService');
+    }
     if (_isInitialized) return;
 
     try {
@@ -91,10 +94,15 @@ class AgoraService extends ChangeNotifier {
         ),
       );
 
+      // Give the native SDK a moment to fully initialize
+      await Future.delayed(const Duration(milliseconds: 100));
+
       _isInitialized = true;
       print('[Agora] Initialized successfully');
     } catch (e) {
       print('[Agora] Initialization error: $e');
+      _isInitialized = false;
+      rethrow;
     }
   }
 
@@ -119,17 +127,33 @@ class AgoraService extends ChangeNotifier {
     required String token,
     required bool isVideoCall,
   }) async {
-    if (!_isInitialized) await initialize();
+    if (_isDisposed) {
+      throw Exception('Cannot join channel with a disposed AgoraService');
+    }
+    
+    if (!_isInitialized) {
+      await initialize();
+      // Additional wait to ensure initialization is complete
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
+
+    // Verify engine is initialized
+    if (!_isInitialized) {
+      throw Exception('Failed to initialize Agora engine');
+    }
 
     try {
       await requestPermissions(isVideoCall: isVideoCall);
 
       // Enable audio
+      await _engine.setChannelProfile(ChannelProfileType.channelProfileCommunication);
+      await _engine.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
       await _engine.enableAudio();
 
       // Setup video if enabled
       if (isVideoCall) {
         await _engine.enableVideo();
+        await _engine.startPreview();
         await _engine.setVideoEncoderConfiguration(
           const VideoEncoderConfiguration(
             dimensions: VideoDimensions(width: 1280, height: 720),
@@ -141,20 +165,41 @@ class AgoraService extends ChangeNotifier {
         await _engine.disableVideo();
       }
 
-      // Join channel
-      await _engine.joinChannel(
-        token: token,
-        channelId: channelName,
-        uid: uid,
-        options: ChannelMediaOptions(
-          autoSubscribeAudio: true,
-          autoSubscribeVideo: isVideoCall,
-          publishMicrophoneTrack: true,
-          publishCameraTrack: isVideoCall,
-        ),
-      );
+      // Join channel with retry logic
+      int retryCount = 0;
+      const maxRetries = 2;
+      Exception? lastError;
 
-      print('[Agora] Joined channel: $channelName');
+      while (retryCount <= maxRetries) {
+        try {
+          await _engine.joinChannel(
+            token: token,
+            channelId: channelName,
+            uid: uid,
+            options: ChannelMediaOptions(
+              autoSubscribeAudio: true,
+              autoSubscribeVideo: isVideoCall,
+              publishMicrophoneTrack: true,
+              publishCameraTrack: isVideoCall,
+            ),
+          );
+
+          print('[Agora] Joined channel: $channelName');
+          return; // Success, exit the method
+        } catch (e) {
+          lastError = e is Exception ? e : Exception(e.toString());
+          retryCount++;
+          
+          if (retryCount <= maxRetries) {
+            print('[Agora] Join attempt $retryCount failed, retrying... Error: $e');
+            await Future.delayed(Duration(milliseconds: 200 * retryCount));
+          }
+        }
+      }
+
+      // If we get here, all retries failed
+      print('[Agora] Error joining channel after $maxRetries retries: $lastError');
+      throw lastError ?? Exception('Failed to join channel');
     } catch (e) {
       print('[Agora] Error joining channel: $e');
       rethrow;
@@ -163,6 +208,7 @@ class AgoraService extends ChangeNotifier {
 
   Future<void> leaveChannel() async {
     try {
+      await _engine.stopPreview();
       await _engine.leaveChannel();
       print('[Agora] Left channel');
     } catch (e) {
@@ -172,21 +218,51 @@ class AgoraService extends ChangeNotifier {
 
   Future<void> toggleAudio(bool mute) async {
     try {
+      // Mute/unmute the local audio stream
+      // When muted, remote users cannot hear you
       await _engine.muteLocalAudioStream(mute);
       _isAudioMuted = mute;
       notifyListeners();
+      print('[Agora] Audio ${mute ? "muted" : "unmuted"} - remote user ${mute ? "cannot" : "can"} hear you');
     } catch (e) {
       print('[Agora] Error toggling audio: $e');
+      // Don't rethrow to prevent blocking call flow
     }
   }
 
   Future<void> toggleVideo(bool enable) async {
     try {
-      await _engine.muteLocalVideoStream(!enable);
-      _isVideoEnabled = enable;
+      if (enable) {
+        // Enable sequence: enable camera -> publish track -> unmute -> preview.
+        await _engine.enableLocalVideo(true);
+        await _engine.updateChannelMediaOptions(
+          ChannelMediaOptions(
+            publishCameraTrack: true,
+          ),
+        );
+        await _engine.muteLocalVideoStream(false);
+        await _engine.startPreview();
+        _isVideoEnabled = true;
+        print('[Agora] Video enabled - remote user can see you');
+      } else {
+        // Disable sequence: unpublish camera track first, then mute/stop local capture.
+        // This guarantees remote users stop receiving camera frames immediately.
+        print('[Agora] Disabling video - unpublishing camera track for remote users');
+        await _engine.updateChannelMediaOptions(
+          ChannelMediaOptions(
+            publishCameraTrack: false,
+          ),
+        );
+        await _engine.muteLocalVideoStream(true);
+        await _engine.enableLocalVideo(false);
+        await _engine.stopPreview();
+        _isVideoEnabled = false;
+        print('[Agora] Video fully disabled - remote user cannot see you');
+      }
       notifyListeners();
     } catch (e) {
       print('[Agora] Error toggling video: $e');
+      // Don't rethrow to prevent blocking call flow
     }
   }
 
@@ -407,8 +483,12 @@ class AgoraService extends ChangeNotifier {
     }
     _isDisposed = true;
     try {
-      await _engine.leaveChannel();
-      await _engine.release();
+      if (_isInitialized) {
+        await _engine.stopPreview();
+        await _engine.leaveChannel();
+        await _engine.release();
+      }
+      _isInitialized = false;
       print('[Agora] Disposed');
     } catch (e) {
       print('[Agora] Error disposing: $e');

@@ -23,6 +23,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _currentIndex = 0;
   bool _isUnlockDialogOpen = false;
+  bool _isInCallScreen = false;
   StreamSubscription<CallModel>? _incomingCallSubscription;
 
   late final List<Widget> _screens = [
@@ -52,6 +53,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _ensureUnlocked();
+      _checkForActiveCall();
+    }
+  }
+
+  Future<void> _checkForActiveCall() async {
+    try {
+      // Don't check if already in a call screen
+      if (_isInCallScreen) return;
+
+      final user = await AuthService.getCurrentUser();
+      if (user == null || !mounted) return;
+
+      // Check if there's an active call for this user
+      final activeCall = await CallService.getActiveCall(user.uid);
+      if (activeCall == null || !mounted) return;
+
+      // If there's an active call, rejoin it
+      if (activeCall.status == 'active' && activeCall.answeredAt != null) {
+        print('[HomeScreen] Detected active call on resume, rejoining...');
+        await _joinActiveCall(activeCall);
+      } else if (activeCall.status == 'ringing' && activeCall.receiverId == user.uid) {
+        // Show incoming call screen if call is still ringing
+        print('[HomeScreen] Detected ringing call on resume, showing incoming screen...');
+        _showIncomingCallScreen(activeCall);
+      }
+    } catch (e) {
+      print('[HomeScreen] Error checking for active call: $e');
     }
   }
 
@@ -64,6 +92,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           .listenForIncomingCalls(user.uid)
           .listen((call) {
         if (!mounted) return;
+        
+        // Prevent duplicate navigation if already in a call screen
+        if (_isInCallScreen) {
+          print('[HomeScreen] Already in call screen, ignoring new call notification');
+          return;
+        }
         
         // If call is ringing, show incoming call screen
         if (call.status == 'ringing') {
@@ -81,6 +115,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _joinActiveCall(CallModel call) async {
     try {
+      // Prevent duplicate navigation
+      if (_isInCallScreen) {
+        print('[HomeScreen] Already in call screen, skipping navigation');
+        return;
+      }
+
       print('[HomeScreen] Joining active call: ${call.callId}');
       
       // Get current user
@@ -88,8 +128,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (currentUser == null || !mounted) return;
 
       // Convert user IDs to integers for Agora
-      final localUid = currentUser.uid.hashCode.abs() % 2147483647;
-      final remoteUid = call.initiatorId.hashCode.abs() % 2147483647;
+      final localUid = CallService.agoraUidFromUserId(currentUser.uid);
+      final remoteUid = CallService.agoraUidFromUserId(call.initiatorId);
+
+      // Mark that we're entering call screen
+      setState(() => _isInCallScreen = true);
 
       // Show loading indicator
       if (mounted) {
@@ -162,10 +205,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ),
         );
+
+        // Call screen was closed, clear the flag
+        if (mounted) {
+          setState(() => _isInCallScreen = false);
+        }
       } catch (e) {
         // Close loading dialog if still open
         if (mounted && Navigator.of(context).canPop()) {
           Navigator.of(context).pop();
+        }
+
+        // Clear the flag on error
+        if (mounted) {
+          setState(() => _isInCallScreen = false);
         }
 
         // Error handling
@@ -187,6 +240,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     } catch (e) {
       print('[HomeScreen] Unexpected error in _joinActiveCall: $e');
+      
+      // Clear the flag on error
+      if (mounted) {
+        setState(() => _isInCallScreen = false);
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('An unexpected error occurred')),
@@ -196,6 +255,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _showIncomingCallScreen(CallModel call) {
+    // Prevent duplicate navigation
+    if (_isInCallScreen) {
+      print('[HomeScreen] Already in call screen, skipping incoming call navigation');
+      return;
+    }
+
+    // Mark that we're entering call screen
+    setState(() => _isInCallScreen = true);
+
     Navigator.of(context).push(
       MaterialPageRoute(
         fullscreenDialog: true,
@@ -216,8 +284,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               if (currentUser == null || !mounted) return;
 
               // Convert user IDs to integers for Agora (using hashCode)
-              final localUid = currentUser.uid.hashCode.abs() % 2147483647;
-              final remoteUid = call.initiatorId.hashCode.abs() % 2147483647;
+              final localUid = CallService.agoraUidFromUserId(currentUser.uid);
+              final remoteUid = CallService.agoraUidFromUserId(call.initiatorId);
 
               // Get Agora token from Cloud Function
               final token = await CallService.getAgoraToken(
@@ -267,8 +335,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ),
               );
+
+              // Call screen was closed, clear the flag
+              if (mounted) {
+                setState(() => _isInCallScreen = false);
+              }
             } catch (e) {
               print('[HomeScreen] Error accepting call: $e');
+              
+              // Clear the flag on error
+              if (mounted) {
+                setState(() => _isInCallScreen = false);
+              }
+
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Failed to join call: $e')),
@@ -278,6 +357,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           },
           onReject: () async {
             Navigator.of(context).pop();
+            
+            // Clear the flag on reject
+            if (mounted) {
+              setState(() => _isInCallScreen = false);
+            }
+
             await CallService.rejectCall(
               callId: call.callId,
               initiatorId: call.initiatorId,
@@ -285,7 +370,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           },
         ),
       ),
-    );
+    ).then((_) {
+      // Clear flag when incoming call screen is dismissed
+      if (mounted) {
+        setState(() => _isInCallScreen = false);
+      }
+    });
   }
 
   Future<void> _ensureUnlocked() async {

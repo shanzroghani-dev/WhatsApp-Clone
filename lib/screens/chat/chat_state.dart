@@ -228,7 +228,31 @@ class ChatScreenState extends State<ChatScreen>
   }
 
   Future<void> _initiateCall(String callType) async {
+    // Show loading indicator
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Starting call...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
     try {
+      print('[ChatScreen] Initiating ${callType} call...');
+      
       // Initiate call in Firebase
       final call = await CallService.initiateCall(
         initiatorId: widget.currentUser.uid,
@@ -239,32 +263,42 @@ class ChatScreenState extends State<ChatScreen>
         receiverProfilePic: widget.peer.profilePic,
         callType: callType,
       );
+      print('[ChatScreen] Call created: ${call.callId}');
 
       if (!mounted) return;
 
-      // Convert user IDs to integers for Agora (using hashCode)
-      final localUid = widget.currentUser.uid.hashCode.abs() % 2147483647;
-      final remoteUid = widget.peer.uid.hashCode.abs() % 2147483647;
+      // Convert user IDs to deterministic integers for Agora.
+      final localUid = CallService.agoraUidFromUserId(widget.currentUser.uid);
+      final remoteUid = CallService.agoraUidFromUserId(widget.peer.uid);
+      print('[ChatScreen] Local UID: $localUid, Remote UID: $remoteUid');
 
       // Get Agora token from Cloud Function
       final token = await CallService.getAgoraToken(
         channelName: call.callId,
         uid: localUid,
       );
+      print('[ChatScreen] Got Agora token');
 
       // Initialize and setup Agora service
       final agoraService = AgoraService();
       await agoraService.initialize();
+      print('[ChatScreen] Agora initialized');
+      
       await agoraService.joinChannel(
         channelName: call.callId,
         uid: localUid,
         token: token,
         isVideoCall: callType == 'video',
       );
+      print('[ChatScreen] Joined Agora channel');
 
       if (!mounted) return;
 
+      // Close loading dialog
+      Navigator.of(context).pop();
+
       // Navigate to in-call screen
+      print('[ChatScreen] Navigating to call screen...');
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => EnhancedInCallScreen(
@@ -294,11 +328,23 @@ class ChatScreenState extends State<ChatScreen>
           ),
         ),
       );
+      print('[ChatScreen] Returned from call screen');
     } catch (e) {
-      if (!mounted) return;
       print('[ChatScreen] Error initiating call: $e');
+      print('[ChatScreen] Error type: ${e.runtimeType}');
+      print('[ChatScreen] Stack trace: ${StackTrace.current}');
+      
+      // Close loading dialog if still open
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to initiate call: $e')),
+        SnackBar(
+          content: Text('Failed to start call: ${e.toString()}'),
+          duration: const Duration(seconds: 4),
+        ),
       );
     }
   }

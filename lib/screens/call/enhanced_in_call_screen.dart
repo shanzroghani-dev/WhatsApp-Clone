@@ -27,7 +27,6 @@ class EnhancedInCallScreen extends StatefulWidget {
 }
 
 class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
-  bool _isVideoVisible = true;
   bool _showControls = true;
   bool _showAdvancedMenu = false;
   VoiceEffectPreset _selectedVoiceEffect = VoiceEffectPreset.none;
@@ -41,6 +40,14 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
   StreamSubscription<CallModel?>? _callStatusSubscription;
   bool _isEndingCall = false;
   bool _timerStarted = false;
+  bool _isChannelJoined = false;
+  bool _remoteUserJoined = false;
+  bool _isLocalPrimary = false;
+  Offset? _floatingVideoOffset;
+
+  static const double _floatingVideoWidth = 170;
+  static const double _floatingVideoHeight = 230;
+  static const double _floatingVideoMargin = 16;
 
   @override
   void initState() {
@@ -50,6 +57,18 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
     _lightening = widget.agoraService.beautyLightening;
     _redness = widget.agoraService.beautyRedness;
     _sharpness = widget.agoraService.beautySharpness;
+
+    // Setup Agora event handlers
+    _setupAgoraEventHandlers();
+
+    // Delay video view initialization slightly to ensure channel is ready
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        setState(() {
+          _isChannelJoined = true;
+        });
+      }
+    });
 
     // Start timer if call already answered, otherwise wait for answer
     if (widget.callModel.answeredAt != null) {
@@ -71,6 +90,37 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
         _startTimer();
       }
     });
+  }
+
+  void _setupAgoraEventHandlers() {
+    widget.agoraService.engine.registerEventHandler(
+      RtcEngineEventHandler(
+        onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
+          print('[InCallScreen] Channel joined successfully');
+          if (mounted) {
+            setState(() {
+              _isChannelJoined = true;
+            });
+          }
+        },
+        onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
+          print('[InCallScreen] Remote user joined: $remoteUid');
+          if (mounted) {
+            setState(() {
+              _remoteUserJoined = true;
+            });
+          }
+        },
+        onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
+          print('[InCallScreen] Remote user offline: $remoteUid');
+          if (mounted) {
+            setState(() {
+              _remoteUserJoined = false;
+            });
+          }
+        },
+      ),
+    );
   }
 
   void _startTimer() {
@@ -125,9 +175,104 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
+  Offset _clampFloatingOffset(Offset candidate, Size screenSize) {
+    final minX = _floatingVideoMargin;
+    final maxX = screenSize.width - _floatingVideoWidth - _floatingVideoMargin;
+    final minY = 70.0;
+    final maxY = screenSize.height - _floatingVideoHeight - 150;
+
+    return Offset(
+      candidate.dx.clamp(minX, maxX).toDouble(),
+      candidate.dy.clamp(minY, maxY).toDouble(),
+    );
+  }
+
+  void _swapPrimaryVideo() {
+    setState(() {
+      _isLocalPrimary = !_isLocalPrimary;
+    });
+  }
+
+  Widget _buildRemoteVideo({required bool compact}) {
+    if (!_remoteUserJoined) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              color: Colors.white,
+              strokeWidth: compact ? 2 : 3,
+            ),
+            SizedBox(height: compact ? 8 : 12),
+            Text(
+              'Connecting...',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: compact ? 10 : 14,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return AgoraVideoView(
+      controller: VideoViewController.remote(
+        rtcEngine: widget.agoraService.engine,
+        canvas: VideoCanvas(uid: widget.remoteUid),
+        connection: RtcConnection(channelId: widget.callModel.callId),
+      ),
+    );
+  }
+
+  Widget _buildLocalVideo() {
+    return AgoraVideoView(
+      controller: VideoViewController(
+        rtcEngine: widget.agoraService.engine,
+        canvas: const VideoCanvas(uid: 0),
+      ),
+    );
+  }
+
+  Widget _buildLocalVideoPanel({required bool compact}) {
+    if (widget.agoraService.isVideoEnabled) {
+      return _buildLocalVideo();
+    }
+
+    return Container(
+      color: Colors.black,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.videocam_off,
+              color: Colors.white70,
+              size: compact ? 24 : 56,
+            ),
+            SizedBox(height: compact ? 6 : 12),
+            Text(
+              'Camera off',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: compact ? 10 : 16,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isVideoCall = widget.callModel.callType == 'video';
+    final screenSize = MediaQuery.of(context).size;
+    final defaultFloatingOffset = Offset(
+      screenSize.width - _floatingVideoWidth - _floatingVideoMargin,
+      90,
+    );
+    final floatingOffset = _floatingVideoOffset ?? defaultFloatingOffset;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -144,40 +289,67 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
                   ? Container(
                       color: Colors.black,
                       child: Center(
-                        child: _isVideoVisible
-                            ? AgoraVideoView(
-                                controller: VideoViewController(
-                                  rtcEngine: widget.agoraService.engine,
-                                  canvas: const VideoCanvas(uid: 0),
-                                ),
-                              )
-                            : _buildProfileView(),
+                    child: _isChannelJoined
+                            ? (_isLocalPrimary
+                          ? _buildLocalVideoPanel(compact: false)
+                                  : _buildRemoteVideo(compact: false))
+                            : Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  _buildProfileView(),
+                                  if (!_isChannelJoined)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 24),
+                                      child: Column(
+                                        children: [
+                                          const CircularProgressIndicator(
+                                            color: Colors.white,
+                                          ),
+                                          const SizedBox(height: 16),
+                                          Text(
+                                            'Connecting...',
+                                            style: TextStyle(
+                                              color: Colors.white.withOpacity(0.7),
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
                       ),
                     )
-                  : _buildProfileView(),
+                  : _buildAudioCallView(),
             ),
 
-            // Remote video (small overlay)
-            if (isVideoCall && _isVideoVisible)
+            // Floating picture-in-picture video (draggable + tap to swap)
+            if (isVideoCall && _isChannelJoined)
               Positioned(
-                top: 50,
-                right: 16,
-                child: Container(
-                  width: 120,
-                  height: 160,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[900],
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white24, width: 2),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: AgoraVideoView(
-                      controller: VideoViewController.remote(
-                        rtcEngine: widget.agoraService.engine,
-                        canvas: VideoCanvas(uid: widget.remoteUid),
-                        connection: RtcConnection(channelId: widget.callModel.callId),
-                      ),
+                left: floatingOffset.dx,
+                top: floatingOffset.dy,
+                child: GestureDetector(
+                  onTap: _swapPrimaryVideo,
+                  onPanUpdate: (details) {
+                    final current = _floatingVideoOffset ?? defaultFloatingOffset;
+                    final next = current + details.delta;
+                    setState(() {
+                      _floatingVideoOffset = _clampFloatingOffset(next, screenSize);
+                    });
+                  },
+                  child: Container(
+                    width: _floatingVideoWidth,
+                    height: _floatingVideoHeight,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[900],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white24, width: 2),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: _isLocalPrimary
+                          ? _buildRemoteVideo(compact: true)
+                          : _buildLocalVideoPanel(compact: true),
                     ),
                   ),
                 ),
@@ -311,9 +483,24 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
                                 ? Icons.mic_off
                                 : Icons.mic,
                             label: 'Mute',
-                            onTap: () {
-                              widget.agoraService
-                                  .toggleAudio(!widget.agoraService.isAudioMuted);
+                            onTap: () async {
+                              try {
+                                final mute = !widget.agoraService.isAudioMuted;
+                                await widget.agoraService.toggleAudio(mute);
+                                if (mounted) {
+                                  setState(() {});
+                                }
+                              } catch (e) {
+                                print('[InCallScreen] Error toggling audio: $e');
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Failed to toggle microphone'),
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              }
                             },
                             isActive: widget.agoraService.isAudioMuted,
                           ),
@@ -325,12 +512,24 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
                                   ? Icons.videocam
                                   : Icons.videocam_off,
                               label: 'Video',
-                              onTap: () {
-                                widget.agoraService
-                                    .toggleVideo(!widget.agoraService.isVideoEnabled);
-                                setState(() {
-                                  _isVideoVisible = widget.agoraService.isVideoEnabled;
-                                });
+                              onTap: () async {
+                                try {
+                                  final enable = !widget.agoraService.isVideoEnabled;
+                                  await widget.agoraService.toggleVideo(enable);
+                                  if (mounted) {
+                                    setState(() {});
+                                  }
+                                } catch (e) {
+                                  print('[InCallScreen] Error toggling video: $e');
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Failed to toggle video'),
+                                        duration: Duration(seconds: 2),
+                                      ),
+                                    );
+                                  }
+                                }
                               },
                               isActive: !widget.agoraService.isVideoEnabled,
                             ),
@@ -364,9 +563,12 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
                                 ? Icons.volume_up
                                 : Icons.volume_off,
                             label: 'Speaker',
-                            onTap: () {
-                              widget.agoraService
-                                  .toggleSpeaker(!widget.agoraService.isSpeakerEnabled);
+                            onTap: () async {
+                              final enable = !widget.agoraService.isSpeakerEnabled;
+                              await widget.agoraService.toggleSpeaker(enable);
+                              if (mounted) {
+                                setState(() {});
+                              }
                             },
                             isActive: widget.agoraService.isSpeakerEnabled,
                           ),
@@ -423,6 +625,153 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
             color: Colors.white,
             fontSize: 24,
             fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAudioCallView() {
+    final connectedLabel = _remoteUserJoined ? 'Connected' : 'Ringing';
+
+    return Stack(
+      children: [
+        Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF0E1E2B),
+                Color(0xFF1F3646),
+                Color(0xFF0A121A),
+              ],
+            ),
+          ),
+        ),
+        Positioned(
+          top: -80,
+          right: -40,
+          child: Container(
+            width: 220,
+            height: 220,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF5BC0BE).withOpacity(0.18),
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 120,
+          left: -60,
+          child: Container(
+            width: 180,
+            height: 180,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFFF4A261).withOpacity(0.16),
+            ),
+          ),
+        ),
+        SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(color: Colors.white24),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _remoteUserJoined ? Icons.call : Icons.ring_volume,
+                          size: 16,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          connectedLabel,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  Text(
+                    _formatDuration(_callDuration),
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 16,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Container(
+                    width: 200,
+                    height: 200,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white30, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.35),
+                          blurRadius: 30,
+                          offset: const Offset(0, 14),
+                        ),
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: CachedNetworkImage(
+                        imageUrl: widget.callModel.receiverProfilePic,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          color: Colors.white12,
+                          child: const Center(
+                            child: CircularProgressIndicator(color: Colors.white),
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          color: Colors.white12,
+                          child: const Icon(Icons.person, size: 72, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  Text(
+                    widget.callModel.receiverName,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 30,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    widget.agoraService.isAudioMuted
+                        ? 'Your microphone is muted'
+                        : 'Tap controls below to manage the call',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ],
@@ -499,8 +848,11 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
             icon: Icons.screen_share,
             label: 'Screen Share',
             value: widget.agoraService.isScreenSharing,
-            onChanged: (value) {
-              widget.agoraService.toggleScreenSharing(value);
+            onChanged: (value) async {
+              await widget.agoraService.toggleScreenSharing(value);
+              if (mounted) {
+                setState(() {});
+              }
             },
           ),
 
@@ -509,8 +861,11 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
             icon: Icons.fiber_manual_record,
             label: 'Record Call',
             value: widget.agoraService.isRecording,
-            onChanged: (value) {
-              widget.agoraService.toggleRecording(value);
+            onChanged: (value) async {
+              await widget.agoraService.toggleRecording(value);
+              if (mounted) {
+                setState(() {});
+              }
             },
           ),
 
@@ -519,8 +874,11 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
             icon: Icons.noise_control_off,
             label: 'Noise Cancellation',
             value: widget.agoraService.isNoiseSuppressionEnabled,
-            onChanged: (value) {
-              widget.agoraService.toggleNoiseSuppression(value);
+            onChanged: (value) async {
+              await widget.agoraService.toggleNoiseSuppression(value);
+              if (mounted) {
+                setState(() {});
+              }
             },
           ),
 
@@ -530,9 +888,11 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
               icon: Icons.face_retouching_natural,
               label: 'Beauty Filter',
               value: widget.agoraService.isBeautyFilterEnabled,
-              onChanged: (value) {
-                widget.agoraService.toggleBeautyFilter(value);
-                setState(() {});
+              onChanged: (value) async {
+                await widget.agoraService.toggleBeautyFilter(value);
+                if (mounted) {
+                  setState(() {});
+                }
               },
             ),
 
