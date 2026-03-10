@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:firebase_core/firebase_core.dart';
@@ -79,6 +80,31 @@ String _decryptMessageBody(RemoteMessage message) {
   return fallback;
 }
 
+Map<String, dynamic>? _decodeNotificationPayload(String? payload) {
+  if (payload == null || payload.isEmpty) return null;
+
+  try {
+    final decoded = jsonDecode(payload);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+  } catch (_) {
+    // Fallback for legacy map-like payload string: {key: value, ...}
+  }
+
+  final callIdMatch = RegExp(r'callId[:\s]+([a-zA-Z0-9-]+)').firstMatch(payload);
+  if (callIdMatch == null) return null;
+
+  return {'callId': callIdMatch.group(1)};
+}
+
+String? _extractCallIdFromPayload(String? payload) {
+  final decoded = _decodeNotificationPayload(payload);
+  final callId = decoded?['callId']?.toString();
+  if (callId == null || callId.isEmpty) return null;
+  return callId;
+}
+
 class _NotificationPrefs {
   _NotificationPrefs({
     required this.messagesEnabled,
@@ -153,7 +179,7 @@ Future<void> _showBackgroundLocalNotification(RemoteMessage message) async {
       ),
       iOS: DarwinNotificationDetails(presentSound: prefs.soundEnabled),
     ),
-    payload: message.data.isEmpty ? null : message.data.toString(),
+    payload: message.data.isEmpty ? null : jsonEncode(message.data),
   );
 }
 
@@ -207,6 +233,9 @@ class NotificationService {
   // Track call notification timers for auto-dismiss
   static final Map<String, Timer> _callNotificationTimers = {};
 
+  // Prevent duplicate accept handling when notification callbacks fire twice.
+  static final Set<String> _processingAcceptedCallIds = {};
+
   static Future<void> initialize({
     GlobalKey<ScaffoldMessengerState>? scaffoldMessengerKey,
     GlobalKey<NavigatorState>? navigatorKey,
@@ -223,8 +252,6 @@ class NotificationService {
     await refreshNotificationPreferences();
 
     await _initializeLocalNotifications();
-
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
     FirebaseMessaging.onMessage.listen((message) {
       print(
@@ -397,6 +424,25 @@ class NotificationService {
     }
     _activeCallNotifications.add(callId);
 
+    // Initialize plugin for background context
+    final plugin = FlutterLocalNotificationsPlugin();
+    
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iosInit = DarwinInitializationSettings();
+    const initSettings = InitializationSettings(
+      android: androidInit,
+      iOS: iosInit,
+    );
+
+    await plugin.initialize(initSettings, onDidReceiveNotificationResponse: _onNotificationTap);
+
+    // Create notification channels
+    final androidPlugin = plugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    await androidPlugin?.createNotificationChannel(_callsChannel);
+    
+    print('[FCM] ✅ Plugin initialized for background call notification');
+
     // Start ringtone
     await CallRingtoneService().startRingtone(callId);
 
@@ -463,7 +509,7 @@ class NotificationService {
       categoryIdentifier: 'CALL_INVITE',
     );
 
-    await _localNotifications.show(
+    await plugin.show(
       callId.hashCode.abs() % 2147483647,
       'Incoming $callTypeLabel Call',
       initiatorName,
@@ -471,7 +517,7 @@ class NotificationService {
         android: androidDetails,
         iOS: iosDetails,
       ),
-      payload: message.data.toString(),
+      payload: jsonEncode(message.data),
     );
 
     print('[FCM] ✅ Incoming call notification shown with call alert style');
@@ -494,7 +540,7 @@ class NotificationService {
       _handleRejectCall(response.payload);
     } else {
       // Regular notification tap (no action button)
-      if (response.payload != null && response.payload!.contains('callId')) {
+      if (_extractCallIdFromPayload(response.payload) != null) {
         _handleAcceptCall(response.payload);
       } else {
         _navigatorKey?.currentState?.pushNamed('/home');
@@ -508,18 +554,36 @@ class NotificationService {
     print('[FCM] 🟢 Processing call acceptance from notification');
     
     try {
-      // Parse callId from payload (format: {callId: xxx, ...})
-      final callIdMatch = RegExp(r'callId[:\s]+([a-zA-Z0-9-]+)').firstMatch(payload);
-      if (callIdMatch == null) {
-        print('[FCM] ⚠️ No callId found in payload');
+      final decoded = _decodeNotificationPayload(payload);
+      if (decoded == null) {
+        print('[FCM] ⚠️ Could not decode payload');
         return;
       }
       
-      final callId = callIdMatch.group(1);
+      final callId = decoded['callId']?.toString();
       if (callId == null) {
-        print('[FCM] ⚠️ Invalid callId');
+        print('[FCM] ⚠️ No callId found in payload');
         return;
       }
+
+      final prefs = await SharedPreferences.getInstance();
+      final lastAcceptedCallId = prefs.getString('last_accepted_call_id');
+      final lastAcceptedAt = prefs.getInt('last_accepted_call_at') ?? 0;
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+      if (_processingAcceptedCallIds.contains(callId)) {
+        print('[FCM] ⚠️ Duplicate accept ignored (in-flight): $callId');
+        return;
+      }
+
+      if (lastAcceptedCallId == callId && nowMs - lastAcceptedAt < 10000) {
+        print('[FCM] ⚠️ Duplicate accept ignored (recent): $callId');
+        return;
+      }
+
+      _processingAcceptedCallIds.add(callId);
+      await prefs.setString('last_accepted_call_id', callId);
+      await prefs.setInt('last_accepted_call_at', nowMs);
       
       // Cancel timeout timer and cleanup
       _callNotificationTimers[callId]?.cancel();
@@ -529,37 +593,30 @@ class NotificationService {
       // Stop ringtone
       await CallRingtoneService().stopRingtone();
       
-      // Get current user
-      final currentUser = await AuthService.getCurrentUser();
-      if (currentUser == null) {
-        print('[FCM] ⚠️ No current user');
-        _navigatorKey?.currentState?.pushNamedAndRemoveUntil('/home', (route) => false);
-        return;
-      }
+      // Store the pending call acceptance in SharedPreferences
+      // HomeScreen will check this after authentication and auto-join
+      print('[FCM] 💾 Storing pending call acceptance: $callId');
+      await prefs.setString('pending_call_id', callId);
+      await prefs.setString('pending_call_data', payload);
+      await prefs.setBool('pending_call_accepted', true);
       
-      // Accept the call in Firebase
-      try {
-        await CallService.acceptCall(
-          callId: callId,
-          receiverId: currentUser.uid,
-        );
-        print('[FCM] ✅ Call accepted in Firebase: $callId');
-      } catch (e) {
-        print('[FCM] ⚠️ Error accepting call in Firebase: $e');
-        // Continue anyway - the call might still be joinable from the app
-      }
-      
-      // Navigate to home - let HomeScreen listener handle showing the InCallScreen
-      // This is much more reliable than trying to initialize Agora from a background context
+      // Navigate to home - authentication will happen naturally
+      // After auth, HomeScreen will detect the pending call and join it
+      print('[FCM] 🏠 Navigating to home with pending call');
       _navigatorKey?.currentState?.pushNamedAndRemoveUntil(
         '/home',
         (route) => false,
       );
-      
-      print('[FCM] ✅ Navigated to home');
+
+      _processingAcceptedCallIds.remove(callId);
       
     } catch (e) {
       print('[FCM] ❌ Error accepting call from notification: $e');
+
+      final callId = _extractCallIdFromPayload(payload);
+      if (callId != null) {
+        _processingAcceptedCallIds.remove(callId);
+      }
       
       // On error, just navigate to home
       _navigatorKey?.currentState?.pushNamedAndRemoveUntil(
@@ -578,16 +635,9 @@ class NotificationService {
       // Stop ringtone
       await CallRingtoneService().stopRingtone();
       
-      // Parse callId from payload
-      final callIdMatch = RegExp(r'callId[:\s]+([a-zA-Z0-9-]+)').firstMatch(payload);
-      if (callIdMatch == null) {
-        print('[FCM] ⚠️ No callId found in payload');
-        return;
-      }
-      
-      final callId = callIdMatch.group(1);
+      final callId = _extractCallIdFromPayload(payload);
       if (callId == null) {
-        print('[FCM] ⚠️ Invalid callId');
+        print('[FCM] ⚠️ No callId found in payload');
         return;
       }
       

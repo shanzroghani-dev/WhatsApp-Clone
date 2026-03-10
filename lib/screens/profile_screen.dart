@@ -4,8 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:whatsapp_clone/auth/auth_service.dart';
-import 'package:whatsapp_clone/core/profile_service.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
+import 'package:whatsapp_clone/core/profile_service.dart';
+import 'package:whatsapp_clone/widgets/skeleton_loader.dart';
 import 'package:whatsapp_clone/screens/profile_edit_screen.dart';
 import 'package:whatsapp_clone/screens/profile_qr_screen.dart';
 import 'package:whatsapp_clone/screens/profile_settings_screens.dart';
@@ -245,7 +246,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const SkeletonCenter()
           : RefreshIndicator(
               onRefresh: _loadProfile,
               child: SingleChildScrollView(

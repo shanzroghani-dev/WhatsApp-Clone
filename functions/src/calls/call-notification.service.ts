@@ -49,10 +49,8 @@ export class CallNotificationService {
       
       const notification: admin.messaging.Message = {
         token: fcmToken,
-        notification: {
-          title: `Incoming ${callTypeLabel} Call`,
-          body: `${callData.initiatorName} is calling...`,
-        },
+        // For Android, send data-only so app can render a rich call-style notification.
+        // A top-level `notification` payload causes generic system notifications in background.
         data: {
           type: 'incoming_call',
           callId: callData.callId,
@@ -70,14 +68,7 @@ export class CallNotificationService {
         },
         android: {
           priority: 'high',
-          notification: {
-            channelId: 'calls',
-            priority: 'high',
-            defaultSound: true,
-            defaultVibrateTimings: true,
-            visibility: 'public',
-            sound: 'default',
-          },
+          collapseKey: `call_${callData.callId}`,
           ttl: 30000, // 30 seconds TTL for call notifications
         },
         apns: {

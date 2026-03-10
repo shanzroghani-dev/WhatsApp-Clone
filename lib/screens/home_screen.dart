@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:whatsapp_clone/auth/auth_service.dart';
 import 'package:whatsapp_clone/chat/call_service.dart';
 import 'package:whatsapp_clone/core/agora_service.dart';
@@ -38,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ensureUnlocked();
+      _checkForPendingCall();
       _initializeCallListener();
     });
   }
@@ -54,6 +56,56 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _ensureUnlocked();
       _checkForActiveCall();
+    }
+  }
+
+  Future<void> _checkForPendingCall() async {
+    try {
+      print('[HomeScreen] 🔍 Checking for pending call from notification');
+      final prefs = await SharedPreferences.getInstance();
+      
+      final pendingCallId = prefs.getString('pending_call_id');
+      final pendingCallAccepted = prefs.getBool('pending_call_accepted') ?? false;
+      
+      if (pendingCallId != null && pendingCallAccepted) {
+        print('[HomeScreen] ✅ Found pending call acceptance: $pendingCallId');
+        
+        // Clear the pending call flags
+        await prefs.remove('pending_call_id');
+        await prefs.remove('pending_call_data');
+        await prefs.remove('pending_call_accepted');
+        
+        // Get current user
+        final currentUser = await AuthService.getCurrentUser();
+        if (currentUser == null || !mounted) {
+          print('[HomeScreen] ⚠️ No user authenticated yet');
+          return;
+        }
+        
+        // Accept the call in Firebase
+        try {
+          await CallService.acceptCall(
+            callId: pendingCallId,
+            receiverId: currentUser.uid,
+          );
+          print('[HomeScreen] ✅ Call accepted in Firebase: $pendingCallId');
+        } catch (e) {
+          print('[HomeScreen] ⚠️ Error accepting call: $e');
+        }
+        
+        // Get the call and join it
+        final call = await CallService.getCall(pendingCallId);
+        if (call != null && mounted) {
+          print('[HomeScreen] 📞 Joining pending call...');
+          await _joinActiveCall(call);
+        } else {
+          print('[HomeScreen] ⚠️ Pending call not found or expired');
+        }
+      } else {
+        print('[HomeScreen] ℹ️ No pending call found');
+      }
+    } catch (e) {
+      print('[HomeScreen] ❌ Error checking pending call: $e');
     }
   }
 

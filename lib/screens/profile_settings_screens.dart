@@ -10,6 +10,7 @@ import 'package:whatsapp_clone/core/design_tokens.dart';
 import 'package:whatsapp_clone/core/local_db_service.dart';
 import 'package:whatsapp_clone/core/notification_service.dart';
 import 'package:whatsapp_clone/core/security_service.dart';
+import 'package:whatsapp_clone/widgets/skeleton_loader.dart';
 
 class PrivacySettingsScreen extends StatefulWidget {
   const PrivacySettingsScreen({super.key});
@@ -48,7 +49,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: SkeletonCenter());
     }
 
     return Scaffold(
@@ -128,73 +129,98 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   Future<String?> _showPinDialog({required bool isChange}) async {
     final controller = TextEditingController();
     final confirmController = TextEditingController();
-    String? error;
+    final errorState = ValueNotifier<String?>('');
 
-    final result = await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setInnerState) => AlertDialog(
-            title: Text(isChange ? 'Change App PIN' : 'Set App PIN'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: controller,
-                  keyboardType: TextInputType.number,
-                  obscureText: true,
-                  maxLength: 6,
-                  decoration: const InputDecoration(
-                    labelText: 'PIN (4-6 digits)',
-                    counterText: '',
+    try {
+      final result = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return WillPopScope(
+            onWillPop: () async {
+              FocusScope.of(dialogContext).unfocus();
+              return true;
+            },
+            child: StatefulBuilder(
+              builder: (context, setInnerState) {
+                return AlertDialog(
+                  title: Text(isChange ? 'Change App PIN' : 'Set App PIN'),
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextField(
+                          controller: controller,
+                          keyboardType: TextInputType.number,
+                          obscureText: true,
+                          maxLength: 6,
+                          decoration: const InputDecoration(
+                            labelText: 'PIN (4-6 digits)',
+                            counterText: '',
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        ValueListenableBuilder<String?>(
+                          valueListenable: errorState,
+                          builder: (context, error, _) {
+                            return TextField(
+                              controller: confirmController,
+                              keyboardType: TextInputType.number,
+                              obscureText: true,
+                              maxLength: 6,
+                              decoration: InputDecoration(
+                                labelText: 'Confirm PIN',
+                                counterText: '',
+                                errorText: error,
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                TextField(
-                  controller: confirmController,
-                  keyboardType: TextInputType.number,
-                  obscureText: true,
-                  maxLength: 6,
-                  decoration: InputDecoration(
-                    labelText: 'Confirm PIN',
-                    counterText: '',
-                    errorText: error,
-                  ),
-                ),
-              ],
+                  actions: [
+                    TextButton(
+                      autofocus: false,
+                      onPressed: () {
+                        FocusScope.of(dialogContext).unfocus();
+                        Navigator.of(dialogContext).pop();
+                      },
+                      child: const Text('Cancel'),
+                    ),
+                    ElevatedButton(
+                      autofocus: false,
+                      onPressed: () {
+                        final pin = controller.text.trim();
+                        final confirm = confirmController.text.trim();
+                        final valid = RegExp(r'^[0-9]{4,6}$').hasMatch(pin);
+                        if (!valid) {
+                          errorState.value = 'PIN must be 4-6 digits';
+                          return;
+                        }
+                        if (pin != confirm) {
+                          errorState.value = 'PIN does not match';
+                          return;
+                        }
+                        FocusScope.of(dialogContext).unfocus();
+                        Navigator.of(dialogContext).pop(pin);
+                      },
+                      child: const Text('Save'),
+                    ),
+                  ],
+                );
+              },
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  final pin = controller.text.trim();
-                  final confirm = confirmController.text.trim();
-                  final valid = RegExp(r'^[0-9]{4,6}$').hasMatch(pin);
-                  if (!valid) {
-                    setInnerState(() => error = 'PIN must be 4-6 digits');
-                    return;
-                  }
-                  if (pin != confirm) {
-                    setInnerState(() => error = 'PIN does not match');
-                    return;
-                  }
-                  Navigator.of(dialogContext).pop(pin);
-                },
-                child: const Text('Save'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
+          );
+        },
+      );
 
-    controller.dispose();
-    confirmController.dispose();
-    return result;
+      return result;
+    } finally {
+      controller.dispose();
+      confirmController.dispose();
+      errorState.dispose();
+    }
   }
 
   Future<void> _toggleScreenLock(bool value) async {
@@ -272,7 +298,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: SkeletonCenter());
     }
 
     return Scaffold(
@@ -373,7 +399,7 @@ class _NotificationSettingsScreenState
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: SkeletonCenter());
     }
 
     return Scaffold(
@@ -507,7 +533,7 @@ class _StorageSettingsScreenState extends State<StorageSettingsScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Storage')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const SkeletonCenter()
           : RefreshIndicator(
               onRefresh: _loadStats,
               child: ListView(

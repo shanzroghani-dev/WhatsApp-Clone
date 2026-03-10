@@ -4,6 +4,7 @@ import 'package:whatsapp_clone/models/message_model.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
 import 'package:whatsapp_clone/utils/date_time_utils.dart';
 import 'package:whatsapp_clone/widgets/profile_avatar.dart';
+import 'package:whatsapp_clone/widgets/skeleton_loader.dart';
 
 class ChatScreen extends StatefulWidget {
   final UserModel currentUser;
@@ -99,7 +100,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const SkeletonLoader()
           : Column(
               children: [
                 Expanded(

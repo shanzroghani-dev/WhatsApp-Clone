@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:whatsapp_clone/models/call_model.dart';
@@ -29,6 +30,9 @@ class EnhancedInCallScreen extends StatefulWidget {
 class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
   bool _showControls = true;
   bool _showAdvancedMenu = false;
+  bool _isTogglingAudio = false;
+  bool _isTogglingVideo = false;
+  bool _isTogglingSpeaker = false;
   VoiceEffectPreset _selectedVoiceEffect = VoiceEffectPreset.none;
   VideoQualityPreset _selectedVideoQuality = VideoQualityPreset.high;
   double _smoothness = 0.5;
@@ -41,9 +45,9 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
   bool _isEndingCall = false;
   bool _timerStarted = false;
   bool _isChannelJoined = false;
-  bool _remoteUserJoined = false;
   bool _isLocalPrimary = false;
   Offset? _floatingVideoOffset;
+  Timer? _controlsAutoHideTimer;
 
   static const double _floatingVideoWidth = 170;
   static const double _floatingVideoHeight = 230;
@@ -58,8 +62,8 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
     _redness = widget.agoraService.beautyRedness;
     _sharpness = widget.agoraService.beautySharpness;
 
-    // Setup Agora event handlers
-    _setupAgoraEventHandlers();
+    // Listen to shared Agora service state updates.
+    widget.agoraService.addListener(_onAgoraStateChanged);
 
     // Delay video view initialization slightly to ensure channel is ready
     Future.delayed(const Duration(milliseconds: 300), () {
@@ -76,6 +80,7 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
     }
 
     Future.delayed(const Duration(seconds: 1), _updateDuration);
+    _showControlsTemporarily();
 
     // Listen to call status changes
     _callStatusSubscription = CallService.listenToCall(widget.callModel.callId).listen((call) {
@@ -92,35 +97,37 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
     });
   }
 
-  void _setupAgoraEventHandlers() {
-    widget.agoraService.engine.registerEventHandler(
-      RtcEngineEventHandler(
-        onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
-          print('[InCallScreen] Channel joined successfully');
-          if (mounted) {
-            setState(() {
-              _isChannelJoined = true;
-            });
-          }
-        },
-        onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
-          print('[InCallScreen] Remote user joined: $remoteUid');
-          if (mounted) {
-            setState(() {
-              _remoteUserJoined = true;
-            });
-          }
-        },
-        onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
-          print('[InCallScreen] Remote user offline: $remoteUid');
-          if (mounted) {
-            setState(() {
-              _remoteUserJoined = false;
-            });
-          }
-        },
-      ),
-    );
+  void _onAgoraStateChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  void _showControlsTemporarily() {
+    if (!mounted) return;
+    if (!_showControls) {
+      setState(() {
+        _showControls = true;
+      });
+    }
+    _controlsAutoHideTimer?.cancel();
+    if (_showAdvancedMenu) return;
+
+    _controlsAutoHideTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted || _showAdvancedMenu) return;
+      setState(() {
+        _showControls = false;
+      });
+    });
+  }
+
+  void _toggleControlsVisibility() {
+    _controlsAutoHideTimer?.cancel();
+    setState(() {
+      _showControls = !_showControls;
+    });
+    if (_showControls) {
+      _showControlsTemporarily();
+    }
   }
 
   void _startTimer() {
@@ -161,6 +168,8 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
   void dispose() {
     _stopwatch.stop();
     _callStatusSubscription?.cancel();
+    _controlsAutoHideTimer?.cancel();
+    widget.agoraService.removeListener(_onAgoraStateChanged);
     super.dispose();
   }
 
@@ -173,6 +182,26 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
       return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
     }
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  /// Get the other user's name (not the current user)
+  String _getOtherUserName() {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUserId == widget.callModel.initiatorId) {
+      return widget.callModel.receiverName;
+    } else {
+      return widget.callModel.initiatorName;
+    }
+  }
+
+  /// Get the other user's profile picture (not the current user)
+  String _getOtherUserProfilePic() {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUserId == widget.callModel.initiatorId) {
+      return widget.callModel.receiverProfilePic;
+    } else {
+      return widget.callModel.initiatorProfilePic;
+    }
   }
 
   Offset _clampFloatingOffset(Offset candidate, Size screenSize) {
@@ -194,8 +223,9 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
   }
 
   Widget _buildRemoteVideo({required bool compact}) {
-    if (!_remoteUserJoined) {
+    if (!widget.agoraService.hasRemoteUser) {
       return Center(
+        key: const ValueKey('remote-connecting'),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -217,6 +247,7 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
     }
 
     return AgoraVideoView(
+      key: const ValueKey('remote-video'),
       controller: VideoViewController.remote(
         rtcEngine: widget.agoraService.engine,
         canvas: VideoCanvas(uid: widget.remoteUid),
@@ -280,13 +311,14 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
         children: [
           // Video/Audio area
           GestureDetector(
-            onTap: () {
-              setState(() {
-                  _showControls = !_showControls;
-                });
-              },
-              child: isVideoCall
+            onTap: _toggleControlsVisibility,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 320),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                child: isVideoCall
                   ? Container(
+                      key: const ValueKey('video-call-stage'),
                       color: Colors.black,
                       child: Center(
                     child: _isChannelJoined
@@ -320,7 +352,11 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
                               ),
                       ),
                     )
-                  : _buildAudioCallView(),
+                  : SizedBox(
+                      key: const ValueKey('audio-call-stage'),
+                      child: _buildAudioCallView(),
+                    ),
+              ),
             ),
 
             // Floating picture-in-picture video (draggable + tap to swap)
@@ -484,6 +520,9 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
                                 : Icons.mic,
                             label: 'Mute',
                             onTap: () async {
+                              if (_isTogglingAudio) return;
+                              _showControlsTemporarily();
+                              _isTogglingAudio = true;
                               try {
                                 final mute = !widget.agoraService.isAudioMuted;
                                 await widget.agoraService.toggleAudio(mute);
@@ -500,6 +539,8 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
                                     ),
                                   );
                                 }
+                              } finally {
+                                _isTogglingAudio = false;
                               }
                             },
                             isActive: widget.agoraService.isAudioMuted,
@@ -513,6 +554,9 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
                                   : Icons.videocam_off,
                               label: 'Video',
                               onTap: () async {
+                                if (_isTogglingVideo) return;
+                                _showControlsTemporarily();
+                                _isTogglingVideo = true;
                                 try {
                                   final enable = !widget.agoraService.isVideoEnabled;
                                   await widget.agoraService.toggleVideo(enable);
@@ -529,6 +573,8 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
                                       ),
                                     );
                                   }
+                                } finally {
+                                  _isTogglingVideo = false;
                                 }
                               },
                               isActive: !widget.agoraService.isVideoEnabled,
@@ -539,6 +585,7 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
                             icon: Icons.call_end,
                             label: 'End',
                             onTap: () {
+                              _showControlsTemporarily();
                               Navigator.of(context).pop();
                               widget.onEndCall();
                             },
@@ -552,6 +599,7 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
                               icon: Icons.flip_camera_ios,
                               label: 'Flip',
                               onTap: () {
+                                _showControlsTemporarily();
                                 widget.agoraService.switchCamera();
                               },
                               isActive: false,
@@ -564,10 +612,17 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
                                 : Icons.volume_off,
                             label: 'Speaker',
                             onTap: () async {
-                              final enable = !widget.agoraService.isSpeakerEnabled;
-                              await widget.agoraService.toggleSpeaker(enable);
-                              if (mounted) {
-                                setState(() {});
+                              if (_isTogglingSpeaker) return;
+                              _showControlsTemporarily();
+                              _isTogglingSpeaker = true;
+                              try {
+                                final enable = !widget.agoraService.isSpeakerEnabled;
+                                await widget.agoraService.toggleSpeaker(enable);
+                                if (mounted) {
+                                  setState(() {});
+                                }
+                              } finally {
+                                _isTogglingSpeaker = false;
                               }
                             },
                             isActive: widget.agoraService.isSpeakerEnabled,
@@ -581,6 +636,7 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
                               setState(() {
                                 _showAdvancedMenu = !_showAdvancedMenu;
                               });
+                              _showControlsTemporarily();
                             },
                             isActive: _showAdvancedMenu,
                           ),
@@ -601,7 +657,7 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         CachedNetworkImage(
-          imageUrl: widget.callModel.receiverProfilePic,
+          imageUrl: _getOtherUserProfilePic(),
           width: 150,
           height: 150,
           fit: BoxFit.cover,
@@ -620,7 +676,7 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
         ),
         const SizedBox(height: 24),
         Text(
-          widget.callModel.receiverName,
+          _getOtherUserName(),
           style: const TextStyle(
             color: Colors.white,
             fontSize: 24,
@@ -632,7 +688,7 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
   }
 
   Widget _buildAudioCallView() {
-    final connectedLabel = _remoteUserJoined ? 'Connected' : 'Ringing';
+    final connectedLabel = widget.agoraService.hasRemoteUser ? 'Connected' : 'Ringing';
 
     return Stack(
       children: [
@@ -691,7 +747,7 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          _remoteUserJoined ? Icons.call : Icons.ring_volume,
+                          widget.agoraService.hasRemoteUser ? Icons.call : Icons.ring_volume,
                           size: 16,
                           color: Colors.white,
                         ),
@@ -733,7 +789,7 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
                     ),
                     child: ClipOval(
                       child: CachedNetworkImage(
-                        imageUrl: widget.callModel.receiverProfilePic,
+                        imageUrl: _getOtherUserProfilePic(),
                         fit: BoxFit.cover,
                         placeholder: (context, url) => Container(
                           color: Colors.white12,
@@ -750,7 +806,7 @@ class _EnhancedInCallScreenState extends State<EnhancedInCallScreen> {
                   ),
                   const SizedBox(height: 28),
                   Text(
-                    widget.callModel.receiverName,
+                    _getOtherUserName(),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: Colors.white,

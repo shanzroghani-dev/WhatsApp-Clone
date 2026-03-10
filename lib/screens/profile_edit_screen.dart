@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:whatsapp_clone/auth/auth_service.dart';
+import 'package:whatsapp_clone/models/user_model.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
 import 'package:whatsapp_clone/core/profile_service.dart';
-import 'package:whatsapp_clone/models/user_model.dart';
+import 'package:whatsapp_clone/widgets/skeleton_loader.dart';
 import 'package:whatsapp_clone/widgets/custom_button.dart';
 import 'package:whatsapp_clone/widgets/custom_text_field.dart';
 import 'package:whatsapp_clone/widgets/profile_avatar.dart';
@@ -398,7 +399,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           ],
         ),
         body: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const SkeletonCenter()
             : SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(
                   AppSpacing.lg,

@@ -10,6 +10,7 @@ class AgoraService extends ChangeNotifier {
   bool _isSpeakerEnabled = true;
   bool _isScreenSharing = false;
   bool _isRecording = false;
+  bool _hasRemoteUser = false;
   bool _isBeautyFilterEnabled = false;
   bool _isNoiseSuppressionEnabled = false;
   double _beautySmoothness = 0.5;
@@ -28,6 +29,7 @@ class AgoraService extends ChangeNotifier {
   bool get isInitialized => _isInitialized;
   bool get isScreenSharing => _isScreenSharing;
   bool get isRecording => _isRecording;
+  bool get hasRemoteUser => _hasRemoteUser;
   bool get isBeautyFilterEnabled => _isBeautyFilterEnabled;
   bool get isNoiseSuppressionEnabled => _isNoiseSuppressionEnabled;
   double get beautySmoothness => _beautySmoothness;
@@ -56,9 +58,12 @@ class AgoraService extends ChangeNotifier {
           },
           onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
             print('[Agora] Join channel success: ${connection.channelId}');
+            _hasRemoteUser = false;
+            notifyListeners();
           },
           onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
             print('[Agora] Remote user joined: $remoteUid');
+            _hasRemoteUser = true;
             notifyListeners();
           },
           onUserOffline:
@@ -70,6 +75,7 @@ class AgoraService extends ChangeNotifier {
                 print(
                   '[Agora] Remote user offline: $remoteUid, reason: $reason',
                 );
+                _hasRemoteUser = false;
                 notifyListeners();
               },
           onNetworkQuality: (RtcConnection connection, int remoteUid, QualityType txQuality, QualityType rxQuality) {
@@ -210,6 +216,8 @@ class AgoraService extends ChangeNotifier {
     try {
       await _engine.stopPreview();
       await _engine.leaveChannel();
+      _hasRemoteUser = false;
+      notifyListeners();
       print('[Agora] Left channel');
     } catch (e) {
       print('[Agora] Error leaving channel: $e');
@@ -488,6 +496,7 @@ class AgoraService extends ChangeNotifier {
         await _engine.leaveChannel();
         await _engine.release();
       }
+      _hasRemoteUser = false;
       _isInitialized = false;
       print('[Agora] Disposed');
     } catch (e) {

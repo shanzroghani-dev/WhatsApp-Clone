@@ -14,6 +14,7 @@ import 'package:whatsapp_clone/providers/recording_provider.dart';
 import 'package:whatsapp_clone/providers/upload_provider.dart';
 import 'package:whatsapp_clone/screens/chat/chat_screen.dart';
 import 'package:whatsapp_clone/screens/search_users_screen.dart';
+import 'package:whatsapp_clone/widgets/skeleton_loader.dart';
 import 'package:whatsapp_clone/widgets/profile_avatar.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
 
@@ -222,7 +223,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   void _openSearch() {
     Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => const SearchUsersScreen()))
+        .push(MaterialPageRoute(builder: (_) => SearchUsersScreen()))
         .then((_) => _loadUsers());
   }
 
@@ -359,7 +360,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const SkeletonLoader()
           : _users.isEmpty
           ? Center(
               child: Padding(
