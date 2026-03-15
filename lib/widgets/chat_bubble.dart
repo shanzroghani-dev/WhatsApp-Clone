@@ -41,9 +41,7 @@ class SentChatBubble extends StatelessWidget {
           children: [
             Text(
               message,
-              style: AppTypography.body.copyWith(
-                color: AppColors.white,
-              ),
+              style: AppTypography.body.copyWith(color: AppColors.white),
             ),
             const SizedBox(height: AppSpacing.sm),
             Row(
@@ -60,8 +58,8 @@ class SentChatBubble extends StatelessWidget {
                   read
                       ? Icons.done_all
                       : delivered
-                          ? Icons.done_all
-                          : Icons.done,
+                      ? Icons.done_all
+                      : Icons.done,
                   size: AppDimensions.iconSmall,
                   color: read ? Colors.blue : AppColors.white,
                 ),
@@ -148,10 +146,7 @@ class ReceivedChatBubble extends StatelessWidget {
 class ChatSystemMessage extends StatelessWidget {
   final String message;
 
-  const ChatSystemMessage({
-    Key? key,
-    required this.message,
-  }) : super(key: key);
+  const ChatSystemMessage({Key? key, required this.message}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -171,7 +166,9 @@ class ChatSystemMessage extends StatelessWidget {
         child: Text(
           message,
           style: AppTypography.captionRegular.copyWith(
-            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+            color: isDark
+                ? AppColors.darkTextSecondary
+                : AppColors.lightTextSecondary,
           ),
         ),
       ),
@@ -183,10 +180,7 @@ class ChatSystemMessage extends StatelessWidget {
 class TypingIndicator extends StatefulWidget {
   final String senderName;
 
-  const TypingIndicator({
-    Key? key,
-    required this.senderName,
-  }) : super(key: key);
+  const TypingIndicator({Key? key, required this.senderName}) : super(key: key);
 
   @override
   State<TypingIndicator> createState() => _TypingIndicatorState();
@@ -238,9 +232,7 @@ class _TypingIndicatorState extends State<TypingIndicator>
           children: [
             Text(
               widget.senderName,
-              style: AppTypography.caption.copyWith(
-                color: AppColors.primary,
-              ),
+              style: AppTypography.caption.copyWith(color: AppColors.primary),
             ),
             const SizedBox(height: AppSpacing.sm),
             _buildDots(),
@@ -258,10 +250,11 @@ class _TypingIndicatorState extends State<TypingIndicator>
           animation: _animationController,
           builder: (context, child) {
             final delay = index * 0.15;
-            final value =
-                (_animationController.value - delay) % 1.0;
-            final opacity = (value < 0.5 ? value * 2 : (1 - value) * 2)
-                .clamp(0.0, 1.0);
+            final value = (_animationController.value - delay) % 1.0;
+            final opacity = (value < 0.5 ? value * 2 : (1 - value) * 2).clamp(
+              0.0,
+              1.0,
+            );
 
             return Opacity(
               opacity: opacity,

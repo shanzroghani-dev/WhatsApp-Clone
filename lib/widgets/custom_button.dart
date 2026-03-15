@@ -44,7 +44,7 @@ class CustomButton extends StatelessWidget {
       height: btnHeight,
       child: ElevatedButton(
         onPressed: (isEnabled && !isLoading) ? onPressed : null,
-        style: backgroundColor != null 
+        style: backgroundColor != null
             ? ElevatedButton.styleFrom(
                 backgroundColor: backgroundColor,
                 disabledBackgroundColor: backgroundColor!.withOpacity(0.6),
@@ -60,7 +60,8 @@ class CustomButton extends StatelessWidget {
                 ),
               )
             : Row(
-                mainAxisAlignment: mainAxisAlignment ?? MainAxisAlignment.center,
+                mainAxisAlignment:
+                    mainAxisAlignment ?? MainAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (icon != null) ...[

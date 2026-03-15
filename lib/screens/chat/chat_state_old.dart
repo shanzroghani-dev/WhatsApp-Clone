@@ -1224,7 +1224,9 @@ class ChatScreenState extends State<ChatScreen> {
                                               : Icons.done,
                                           size: 14,
                                           color: message.delivered
-                                              ? (message.read ? Colors.blue : Colors.white)
+                                              ? (message.read
+                                                    ? Colors.blue
+                                                    : Colors.white)
                                               : Colors.white70,
                                         ),
                                       ],

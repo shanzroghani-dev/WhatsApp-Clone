@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/models/call_model.dart';
 import 'package:whatsapp_clone/chat/call_service.dart';
+import 'package:whatsapp_clone/chat/call_service_utils.dart';
 
 class CallStateNotifier extends ChangeNotifier {
   CallModel? _activeCall;
@@ -82,7 +83,7 @@ class IncomingCallNotifier extends ChangeNotifier {
           callId: _incomingCall!.callId,
           receiverId: userId,
         );
-        _incomingCall = _incomingCall!.copyWith(status: 'active');
+        _incomingCall = _incomingCall!.copyWith(status: CallStatus.active);
         notifyListeners();
       } catch (e) {
         print('[IncomingCallNotifier] Error accepting call: $e');

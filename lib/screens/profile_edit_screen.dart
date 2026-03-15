@@ -98,9 +98,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load profile: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to load profile: $e')));
     } finally {
       if (mounted) {
         setState(() => _loading = false);
@@ -145,7 +145,8 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 Navigator.pop(context, ImageSource.gallery);
               },
             ),
-            if (_selectedImage != null || (_currentUser?.profilePic.isNotEmpty ?? false))
+            if (_selectedImage != null ||
+                (_currentUser?.profilePic.isNotEmpty ?? false))
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
                 title: const Text(
@@ -216,13 +217,18 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
     if (_displayNameController.text.trim().length < 2) {
       HapticFeedback.heavyImpact();
-      setState(() => _displayNameError = 'Display name must be at least 2 characters');
+      setState(
+        () => _displayNameError = 'Display name must be at least 2 characters',
+      );
       return;
     }
 
     if (_statusController.text.trim().length > _maxStatusLength) {
       HapticFeedback.heavyImpact();
-      setState(() => _statusError = 'Status must be $_maxStatusLength characters or less');
+      setState(
+        () => _statusError =
+            'Status must be $_maxStatusLength characters or less',
+      );
       return;
     }
 
@@ -296,7 +302,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Reset Changes?'),
-        content: const Text('This will restore all fields to their original values.'),
+        content: const Text(
+          'This will restore all fields to their original values.',
+        ),
         actions: [
           TextButton(
             onPressed: () {
@@ -342,7 +350,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Discard Changes?'),
-        content: const Text('You have unsaved changes. Are you sure you want to discard them?'),
+        content: const Text(
+          'You have unsaved changes. Are you sure you want to discard them?',
+        ),
         actions: [
           TextButton(
             onPressed: () {
@@ -502,7 +512,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 ? (_currentUser?.displayName ?? 'Your Name')
                 : _displayNameController.text.trim(),
             textAlign: TextAlign.center,
-            style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
@@ -662,7 +674,12 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               ],
             ),
             const SizedBox(height: AppSpacing.lg),
-            _buildInfoRow(theme, 'Email', _currentUser?.email ?? '', Icons.email),
+            _buildInfoRow(
+              theme,
+              'Email',
+              _currentUser?.email ?? '',
+              Icons.email,
+            ),
             const Divider(height: AppSpacing.xl),
             _buildInfoRow(
               theme,
@@ -676,14 +693,15 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     );
   }
 
-  Widget _buildInfoRow(ThemeData theme, String label, String value, IconData icon) {
+  Widget _buildInfoRow(
+    ThemeData theme,
+    String label,
+    String value,
+    IconData icon,
+  ) {
     return Row(
       children: [
-        Icon(
-          icon,
-          size: 18,
-          color: theme.iconTheme.color?.withOpacity(0.5),
-        ),
+        Icon(icon, size: 18, color: theme.iconTheme.color?.withOpacity(0.5)),
         const SizedBox(width: AppSpacing.md),
         Expanded(
           child: Column(

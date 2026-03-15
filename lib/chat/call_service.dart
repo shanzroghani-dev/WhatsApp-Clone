@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:uuid/uuid.dart';
 import 'package:whatsapp_clone/models/call_model.dart';
+import 'package:whatsapp_clone/chat/call_service_utils.dart';
 
 class CallService {
   static final FirebaseDatabase _rtdb = FirebaseDatabase.instance;
@@ -15,7 +16,8 @@ class CallService {
 
   // Track active call timeout timers to cancel them when call is answered/rejected
   static final Map<String, Timer> _callTimeoutTimers = {};
-  static final Set<String> _cancelledCalls = {}; // Track calls already cancelled
+  static final Set<String> _cancelledCalls =
+      {}; // Track calls already cancelled
 
   /// Deterministic Agora UID derived from user ID.
   /// Avoids using `hashCode`, which can differ across app runs/devices.
@@ -59,7 +61,9 @@ class CallService {
       return result.data['token'] as String;
     } on TimeoutException catch (e) {
       print('[CallService] Timeout getting Agora token: $e');
-      throw Exception('Agora token request timed out. Please check your connection.');
+      throw Exception(
+        'Agora token request timed out. Please check your connection.',
+      );
     } catch (e) {
       print('[CallService] Error getting Agora token: $e');
       throw Exception('Failed to get Agora token: $e');
@@ -98,7 +102,7 @@ class CallService {
         'receiverName': receiverName,
         'receiverProfilePic': receiverProfilePic,
         'callType': callType,
-        'status': 'ringing',
+        'status': CallStatus.ringing,
         'initiatedAt': now.millisecondsSinceEpoch,
         'agoraToken': token,
         'agoraChannel': callId,
@@ -127,7 +131,7 @@ class CallService {
         receiverProfilePic: receiverProfilePic,
         initiatedAt: now,
         callType: callType,
-        status: 'ringing',
+        status: CallStatus.ringing,
       );
     } catch (e) {
       print('[CallService] Error initiating call: $e');
@@ -145,7 +149,9 @@ class CallService {
       const Duration(seconds: _callTimeoutSeconds),
       () async {
         if (_cancelledCalls.contains(callId)) {
-          print('[CallService] Call $callId already cancelled, skipping timeout');
+          print(
+            '[CallService] Call $callId already cancelled, skipping timeout',
+          );
           return;
         }
 
@@ -154,11 +160,16 @@ class CallService {
         try {
           final latestCall = await getCall(callId);
           if (latestCall == null) {
-            print('[CallService] Call $callId no longer exists, skipping timeout');
+            print(
+              '[CallService] Call $callId no longer exists, skipping timeout',
+            );
             return;
           }
 
-          if (latestCall.status != 'ringing' || latestCall.answeredAt != null) {
+          if (!shouldAutoEndAsNoAnswer(
+            status: latestCall.status,
+            answeredAt: latestCall.answeredAt,
+          )) {
             print(
               '[CallService] Call $callId already ${latestCall.status}, skipping no_answer timeout',
             );
@@ -168,7 +179,7 @@ class CallService {
           _cancelledCalls.add(callId);
 
           // Auto-end the call with 'no_answer' reason
-          await endCall(callId: callId, endReason: 'no_answer');
+          await endCall(callId: callId, endReason: timeoutEndReason);
           print('[CallService] ✅ Call auto-ended due to timeout: $callId');
         } catch (e) {
           print('[CallService] ❌ Error auto-ending call on timeout: $e');
@@ -179,7 +190,9 @@ class CallService {
       },
     );
 
-    print('[CallService] ⏲️ Call timeout set for $callId (${_callTimeoutSeconds}s)');
+    print(
+      '[CallService] ⏲️ Call timeout set for $callId (${_callTimeoutSeconds}s)',
+    );
   }
 
   /// Cancel timeout for a call (when it's answered or rejected)
@@ -206,7 +219,7 @@ class CallService {
           .collection(_callsCollection)
           .doc(callId)
           .update({
-            'status': 'active',
+            'status': CallStatus.active,
             'answeredAt': now.millisecondsSinceEpoch,
           })
           .timeout(
@@ -223,7 +236,7 @@ class CallService {
       await _rtdb
           .ref('active_calls/$callId')
           .update({
-            'status': 'active',
+            'status': CallStatus.active,
             'answeredAt': now.millisecondsSinceEpoch,
           })
           .timeout(
@@ -254,8 +267,8 @@ class CallService {
     try {
       // Cancel the timeout timer since call is being rejected
       _cancelCallTimeout(callId);
-      
-      await endCall(callId: callId, endReason: 'rejected');
+
+      await endCall(callId: callId, endReason: CallEndReason.rejected);
       print('[CallService] Call rejected: $callId');
     } catch (e) {
       print('[CallService] Error rejecting call: $e');
@@ -293,13 +306,14 @@ class CallService {
           : null;
 
       // Calculate duration in seconds
-      final durationSeconds = answeredAt != null
-          ? now.difference(answeredAt).inSeconds
-          : 0;
+      final durationSeconds = calculateDurationSeconds(
+        now: now,
+        answeredAt: answeredAt,
+      );
 
       // Update call status
       await _firestore.collection(_callsCollection).doc(callId).update({
-        'status': 'ended',
+        'status': CallStatus.ended,
         'endedAt': now.millisecondsSinceEpoch,
         'endReason': endReason,
         'durationSeconds': durationSeconds,
@@ -308,7 +322,7 @@ class CallService {
       // Save to call history (using callId as document ID to prevent duplicates)
       await _firestore.collection(_callHistoryCollection).doc(callId).set({
         ...callData,
-        'status': 'ended',
+        'status': CallStatus.ended,
         'endedAt': now.millisecondsSinceEpoch,
         'endReason': endReason,
         'durationSeconds': durationSeconds,
@@ -332,7 +346,7 @@ class CallService {
         answeredAt: answeredAt,
         endedAt: now,
         callType: callData['callType'] as String,
-        status: 'ended',
+        status: CallStatus.ended,
         durationSeconds: durationSeconds,
         endReason: endReason,
       );
@@ -347,7 +361,7 @@ class CallService {
     return _firestore
         .collection(_callsCollection)
         .where('receiverId', isEqualTo: userId)
-        .where('status', isEqualTo: 'ringing')
+        .where('status', isEqualTo: CallStatus.ringing)
         .snapshots()
         .where((snapshot) => snapshot.docs.isNotEmpty)
         .map((snapshot) {
@@ -359,14 +373,12 @@ class CallService {
 
   /// Listen to a specific call's status changes
   static Stream<CallModel?> listenToCall(String callId) {
-    return _firestore
-        .collection(_callsCollection)
-        .doc(callId)
-        .snapshots()
-        .map((snapshot) {
-          if (!snapshot.exists) return null;
-          return CallModel.fromJson({...snapshot.data()!, 'docId': snapshot.id});
-        });
+    return _firestore.collection(_callsCollection).doc(callId).snapshots().map((
+      snapshot,
+    ) {
+      if (!snapshot.exists) return null;
+      return CallModel.fromJson({...snapshot.data()!, 'docId': snapshot.id});
+    });
   }
 
   /// Get the active call for a user (ringing or active status)
@@ -376,7 +388,7 @@ class CallService {
       final initiatorQuery = await _firestore
           .collection(_callsCollection)
           .where('initiatorId', isEqualTo: userId)
-          .where('status', whereIn: ['ringing', 'active'])
+          .where('status', whereIn: [CallStatus.ringing, CallStatus.active])
           .limit(1)
           .get();
 
@@ -391,7 +403,7 @@ class CallService {
       final receiverQuery = await _firestore
           .collection(_callsCollection)
           .where('receiverId', isEqualTo: userId)
-          .where('status', whereIn: ['ringing', 'active'])
+          .where('status', whereIn: [CallStatus.ringing, CallStatus.active])
           .limit(1)
           .get();
 
@@ -433,11 +445,13 @@ class CallService {
 
       // Combine both lists
       final allCalls = <CallModel>[];
-      
+
       allCalls.addAll(
-          initiatorSnapshot.docs.map((doc) => CallModel.fromJson(doc.data())));
+        initiatorSnapshot.docs.map((doc) => CallModel.fromJson(doc.data())),
+      );
       allCalls.addAll(
-          receiverSnapshot.docs.map((doc) => CallModel.fromJson(doc.data())));
+        receiverSnapshot.docs.map((doc) => CallModel.fromJson(doc.data())),
+      );
 
       // Remove duplicates (if any) and sort by date
       final uniqueCalls = <String, CallModel>{};
@@ -456,6 +470,33 @@ class CallService {
     } catch (e) {
       print('[CallService] Error getting call history: $e');
       return [];
+    }
+  }
+
+  /// Delete a call history entry.
+  static Future<void> deleteCallHistoryEntry({required String callId}) async {
+    try {
+      await _firestore
+          .collection(_callHistoryCollection)
+          .doc(callId)
+          .delete()
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () {
+              throw TimeoutException(
+                'Firestore delete timed out',
+                const Duration(seconds: 10),
+              );
+            },
+          );
+
+      print('[CallService] Deleted call history entry: $callId');
+    } on TimeoutException catch (e) {
+      print('[CallService] Timeout deleting call history entry: $e');
+      throw Exception('Failed to delete call history entry (timeout).');
+    } catch (e) {
+      print('[CallService] Error deleting call history entry: $e');
+      rethrow;
     }
   }
 

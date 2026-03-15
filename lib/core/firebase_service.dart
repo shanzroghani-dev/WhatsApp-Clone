@@ -208,13 +208,13 @@ class FirebaseService {
         .collection(AppConstants.usersCollection)
         .doc(uid)
         .get();
-    
+
     if (!doc.exists) return null;
-    
+
     final data = doc.data()!;
     // Cache the result for 6 hours
     _userProfileCache[uid] = _CachedUserProfile(data, DateTime.now());
-    
+
     return data;
   }
 
@@ -338,7 +338,8 @@ class FirebaseService {
     // Use flat structure: messages/{messageId}
     // Always create NEW message with Firebase auto-generated key
     final messageRef = _realtimeDb.ref('messages').push();
-    final remoteId = messageRef.key!; // Force auto-generated key, never use localMessageId
+    final remoteId =
+        messageRef.key!; // Force auto-generated key, never use localMessageId
 
     final payload = {
       'messageId': remoteId,
@@ -354,7 +355,8 @@ class FirebaseService {
 
     // Include notification metadata to avoid Firestore reads in Cloud Function
     if (senderName != null) payload['senderName'] = senderName;
-    if (receiverFcmToken != null) payload['receiverFcmToken'] = receiverFcmToken;
+    if (receiverFcmToken != null)
+      payload['receiverFcmToken'] = receiverFcmToken;
     if (messageType != null) payload['type'] = messageType;
 
     // Write to flat messages structure - ONLY with messageId key
@@ -404,7 +406,7 @@ class FirebaseService {
 
     final messages = <Map<String, dynamic>>[];
     final data = snapshot.value as Map;
-    
+
     for (final entry in data.entries) {
       if (entry.value is Map) {
         final msg = Map<String, dynamic>.from(entry.value as Map);
@@ -422,23 +424,19 @@ class FirebaseService {
   static Future<void> markAsDelivered(String messageId) async {
     // Update flat structure with timestamp
     final now = DateTime.now().millisecondsSinceEpoch;
-    await _realtimeDb
-        .ref('messages/$messageId')
-        .update({
-          'delivered': true,
-          'deliveredAt': now,
-        });
+    await _realtimeDb.ref('messages/$messageId').update({
+      'delivered': true,
+      'deliveredAt': now,
+    });
   }
 
   static Future<void> markAsRead(String messageId) async {
     // Update flat structure with timestamp
     final now = DateTime.now().millisecondsSinceEpoch;
-    await _realtimeDb
-        .ref('messages/$messageId')
-        .update({
-          'read': true,
-          'readAt': now,
-        });
+    await _realtimeDb.ref('messages/$messageId').update({
+      'read': true,
+      'readAt': now,
+    });
   }
 
   /// Listen for message status updates (delivered/read changes) on sent messages
@@ -469,10 +467,8 @@ class FirebaseService {
   ) async {
     try {
       // Query flat structure by messageId only
-      final snapshot = await _realtimeDb
-          .ref('messages/$messageId')
-          .get();
-      
+      final snapshot = await _realtimeDb.ref('messages/$messageId').get();
+
       if (!snapshot.exists || snapshot.value is! Map) {
         return null;
       }
@@ -486,16 +482,14 @@ class FirebaseService {
     }
   }
 
-  static Future<void> deleteOldMessagesInCloud(
-    int cutoffTime,
-  ) async {
+  static Future<void> deleteOldMessagesInCloud(int cutoffTime) async {
     // Query flat structure
     final snapshot = await _realtimeDb
         .ref('messages')
         .orderByChild('timestamp')
         .endBefore(cutoffTime)
         .get();
-        
+
     if (!snapshot.exists || snapshot.value is! Map) return;
 
     final messagesMap = Map<dynamic, dynamic>.from(snapshot.value as Map);
@@ -504,9 +498,7 @@ class FirebaseService {
       if (messageId == null) continue;
 
       try {
-        await _realtimeDb
-            .ref('messages/$messageId')
-            .remove();
+        await _realtimeDb.ref('messages/$messageId').remove();
       } catch (e) {
         print('[Firebase] Error deleting message $messageId: $e');
       }
@@ -580,7 +572,9 @@ class FirebaseService {
 
       // Delete all found messages
       await deleteMessagesByIds(messageIds);
-      print('[Firebase] ✓ Deleted ${messageIds.length} messages from conversation');
+      print(
+        '[Firebase] ✓ Deleted ${messageIds.length} messages from conversation',
+      );
     } catch (e) {
       print('[Firebase] Error deleting conversation: $e');
       rethrow;

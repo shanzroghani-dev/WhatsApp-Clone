@@ -46,14 +46,14 @@ class AppColors {
   static const Color transparent = Colors.transparent;
   static const Color black = Color(0xFF000000);
   static const Color white = Color(0xFFFFFFFF);
-  
+
   // Gradients
   static const LinearGradient primaryGradient = LinearGradient(
     colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
-  
+
   static const LinearGradient accentGradient = LinearGradient(
     colors: [Color(0xFF00B4DB), Color(0xFF0083B0)],
     begin: Alignment.topLeft,
@@ -214,7 +214,7 @@ class AppShadows {
     offset: Offset(0, 8),
     spreadRadius: 0,
   );
-  
+
   static const BoxShadow card = BoxShadow(
     color: Color(0x0D000000), // 5% opacity
     blurRadius: 15,
@@ -226,7 +226,7 @@ class AppShadows {
   static const List<BoxShadow> mediumList = [medium];
   static const List<BoxShadow> elevatedList = [elevated];
   static const List<BoxShadow> cardList = [card];
-  
+
   // Colored shadows for special effects
   static BoxShadow coloredShadow(Color color) => BoxShadow(
     color: color.withOpacity(0.3),

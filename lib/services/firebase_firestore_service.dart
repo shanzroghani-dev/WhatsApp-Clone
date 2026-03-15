@@ -28,7 +28,9 @@ class FirebaseFirestoreService {
   }
 
   // Get user by username
-  static Future<Map<String, dynamic>?> getUserByUsername(String username) async {
+  static Future<Map<String, dynamic>?> getUserByUsername(
+    String username,
+  ) async {
     final query = await _firestore
         .collection('users')
         .where('username', isEqualTo: username)
@@ -39,7 +41,9 @@ class FirebaseFirestoreService {
   }
 
   // Get all users (for chat list)
-  static Future<List<Map<String, dynamic>>> getAllUsers(String currentUID) async {
+  static Future<List<Map<String, dynamic>>> getAllUsers(
+    String currentUID,
+  ) async {
     final query = await _firestore
         .collection('users')
         .where('uid', isNotEqualTo: currentUID)

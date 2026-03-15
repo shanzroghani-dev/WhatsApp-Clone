@@ -29,18 +29,26 @@ class StorageService {
     final existing = await _secureStorage.read(key: _secureKey);
     if (existing == null) {
       final key = encrypt.Key.fromSecureRandom(32); // 256-bit key
-      await _secureStorage.write(key: _secureKey, value: base64Encode(key.bytes));
+      await _secureStorage.write(
+        key: _secureKey,
+        value: base64Encode(key.bytes),
+      );
       _aesKey = key;
     } else {
       _aesKey = encrypt.Key(base64Decode(existing));
     }
-    _encrypter = encrypt.Encrypter(encrypt.AES(_aesKey, mode: encrypt.AESMode.cbc));
+    _encrypter = encrypt.Encrypter(
+      encrypt.AES(_aesKey, mode: encrypt.AESMode.cbc),
+    );
 
     // Initialize local SQLite DB for messages
     final databasesPath = await getDatabasesPath();
     final path = join(databasesPath, 'whatsapp_clone.db');
-    _db = await openDatabase(path, version: 1, onCreate: (db, version) async {
-      await db.execute('''
+    _db = await openDatabase(
+      path,
+      version: 1,
+      onCreate: (db, version) async {
+        await db.execute('''
         CREATE TABLE messages (
           id TEXT PRIMARY KEY,
           fromId TEXT,
@@ -50,7 +58,8 @@ class StorageService {
           timestamp INTEGER
         )
       ''');
-    });
+      },
+    );
 
     // Cleanup old messages on startup
     await deleteOldLocalMessages();
@@ -61,7 +70,9 @@ class StorageService {
     final raw = _prefs.getString(_usersKey);
     if (raw == null) return [];
     final list = jsonDecode(raw) as List<dynamic>;
-    return list.map((e) => AppUser.fromJson(e as Map<String, dynamic>)).toList();
+    return list
+        .map((e) => AppUser.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   static Future<void> saveUsers(List<AppUser> users) async {
@@ -72,7 +83,9 @@ class StorageService {
   static Future<AppUser?> findByUsername(String username) async {
     final all = await users();
     try {
-      return all.firstWhere((u) => u.username.toLowerCase() == username.toLowerCase());
+      return all.firstWhere(
+        (u) => u.username.toLowerCase() == username.toLowerCase(),
+      );
     } catch (_) {
       return null;
     }
@@ -103,10 +116,12 @@ class StorageService {
 
   // Local DB message APIs (encrypted storage)
   static Future<List<Message>> messagesBetween(String aId, String bId) async {
-    final rows = await _db.query('messages',
-        where: '(fromId = ? AND toId = ?) OR (fromId = ? AND toId = ?)',
-        whereArgs: [aId, bId, bId, aId],
-        orderBy: 'timestamp ASC');
+    final rows = await _db.query(
+      'messages',
+      where: '(fromId = ? AND toId = ?) OR (fromId = ? AND toId = ?)',
+      whereArgs: [aId, bId, bId, aId],
+      orderBy: 'timestamp ASC',
+    );
 
     final result = <Message>[];
     for (final m in rows) {
@@ -124,7 +139,15 @@ class StorageService {
           text = '<decryption error>';
         }
       }
-      result.add(Message(id: id, fromId: fromId, toId: toId, text: text, timestamp: timestamp));
+      result.add(
+        Message(
+          id: id,
+          fromId: fromId,
+          toId: toId,
+          text: text,
+          timestamp: timestamp,
+        ),
+      );
     }
     return result;
   }
@@ -150,7 +173,9 @@ class StorageService {
   }
 
   static Future<void> deleteOldLocalMessages() async {
-    final cutoff = DateTime.now().subtract(const Duration(hours: 24)).millisecondsSinceEpoch;
+    final cutoff = DateTime.now()
+        .subtract(const Duration(hours: 24))
+        .millisecondsSinceEpoch;
     await _db.delete('messages', where: 'timestamp < ?', whereArgs: [cutoff]);
   }
 }

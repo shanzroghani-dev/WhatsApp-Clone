@@ -35,8 +35,10 @@ void onVoiceLongPressStart(
   BuildContext context,
   LongPressStartDetails details,
 ) {
-  final recordingState =
-      Provider.of<RecordingStateNotifier>(context, listen: false);
+  final recordingState = Provider.of<RecordingStateNotifier>(
+    context,
+    listen: false,
+  );
   recordingState.setRecordingCancelTriggered(false);
   recordingState.setRecordingSlideOffset(0);
   // Start recording...
@@ -44,8 +46,10 @@ void onVoiceLongPressStart(
 
 /// Example 3: Start recording with provider
 Future<void> startRecording(BuildContext context) async {
-  final recordingState =
-      Provider.of<RecordingStateNotifier>(context, listen: false);
+  final recordingState = Provider.of<RecordingStateNotifier>(
+    context,
+    listen: false,
+  );
 
   // Start recording logic here...
 
@@ -55,8 +59,10 @@ Future<void> startRecording(BuildContext context) async {
 
 /// Example 4: Stop recording with provider
 Future<void> stopRecording(BuildContext context) async {
-  final recordingState =
-      Provider.of<RecordingStateNotifier>(context, listen: false);
+  final recordingState = Provider.of<RecordingStateNotifier>(
+    context,
+    listen: false,
+  );
 
   // Stop recording logic here...
 
@@ -78,8 +84,10 @@ class _RecordingListenerState extends State<RecordingListener> {
     super.initState();
     // Listen to recording state changes
     Future.microtask(() {
-      final recordingState =
-          Provider.of<RecordingStateNotifier>(context, listen: false);
+      final recordingState = Provider.of<RecordingStateNotifier>(
+        context,
+        listen: false,
+      );
       // You can add a custom listener here if needed
       recordingState.addListener(_onRecordingChanged);
     });
@@ -92,8 +100,10 @@ class _RecordingListenerState extends State<RecordingListener> {
 
   @override
   void dispose() {
-    final recordingState =
-        Provider.of<RecordingStateNotifier>(context, listen: false);
+    final recordingState = Provider.of<RecordingStateNotifier>(
+      context,
+      listen: false,
+    );
     recordingState.removeListener(_onRecordingChanged);
     super.dispose();
   }

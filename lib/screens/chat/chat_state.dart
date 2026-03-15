@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:whatsapp_clone/chat/call_service.dart';
+import 'package:whatsapp_clone/chat/call_service_utils.dart';
 import 'package:whatsapp_clone/chat/chat_service.dart';
 import 'package:whatsapp_clone/core/agora_service.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
@@ -252,7 +253,7 @@ class ChatScreenState extends State<ChatScreen>
 
     try {
       print('[ChatScreen] Initiating ${callType} call...');
-      
+
       // Initiate call in Firebase
       final call = await CallService.initiateCall(
         initiatorId: widget.currentUser.uid,
@@ -283,12 +284,12 @@ class ChatScreenState extends State<ChatScreen>
       final agoraService = AgoraService();
       await agoraService.initialize();
       print('[ChatScreen] Agora initialized');
-      
+
       await agoraService.joinChannel(
         channelName: call.callId,
         uid: localUid,
         token: token,
-        isVideoCall: callType == 'video',
+        isVideoCall: callType == CallType.video,
       );
       print('[ChatScreen] Joined Agora channel');
 
@@ -309,13 +310,13 @@ class ChatScreenState extends State<ChatScreen>
               try {
                 await CallService.endCall(
                   callId: call.callId,
-                  endReason: 'user_ended',
+                  endReason: CallEndReason.userEnded,
                 );
                 await agoraService.dispose();
               } catch (e) {
                 print('[ChatScreen] Error in onEndCall: $e');
               }
-              
+
               // Safely pop after current frame
               if (context.mounted) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -333,7 +334,7 @@ class ChatScreenState extends State<ChatScreen>
       print('[ChatScreen] Error initiating call: $e');
       print('[ChatScreen] Error type: ${e.runtimeType}');
       print('[ChatScreen] Stack trace: ${StackTrace.current}');
-      
+
       // Close loading dialog if still open
       if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();

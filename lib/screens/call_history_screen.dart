@@ -1,14 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:whatsapp_clone/auth/auth_service.dart';
 import 'package:whatsapp_clone/chat/call_service.dart';
+import 'package:whatsapp_clone/chat/call_service_utils.dart';
 import 'package:whatsapp_clone/models/call_model.dart';
 import 'package:whatsapp_clone/models/user_model.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
 import 'package:whatsapp_clone/core/firebase_service.dart';
 import 'package:whatsapp_clone/core/agora_service.dart';
 import 'package:whatsapp_clone/screens/call/enhanced_in_call_screen.dart';
+import 'package:whatsapp_clone/utils/date_time_utils.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 class CallHistoryScreen extends StatefulWidget {
@@ -63,20 +67,20 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
 
   String _getCallDirection(CallModel call) {
     if (_currentUserId == null) return 'unknown';
-    return call.initiatorId == _currentUserId ? 'outgoing' : 'incoming';
+    return call.getDirection(_currentUserId!);
   }
 
   IconData _getCallIcon(CallModel call) {
     final direction = _getCallDirection(call);
-    final isVideo = call.callType == 'video';
+    final isVideo = call.isVideoCall;
 
     if (isVideo) {
-      if (call.status == 'missed' && direction == 'incoming') {
+      if (call.status == CallStatus.missed && direction == 'incoming') {
         return Icons.videocam_off;
       }
       return Icons.videocam;
     } else {
-      if (call.status == 'missed' && direction == 'incoming') {
+      if (call.status == CallStatus.missed && direction == 'incoming') {
         return Icons.call_missed;
       } else if (direction == 'incoming') {
         return Icons.call_received;
@@ -88,7 +92,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
 
   Color _getCallIconColor(CallModel call) {
     final direction = _getCallDirection(call);
-    if (call.status == 'missed' && direction == 'incoming') {
+    if (call.status == CallStatus.missed && direction == 'incoming') {
       return Colors.red;
     }
     return Colors.green;
@@ -99,7 +103,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
     final parts = <String>[];
 
     // Add direction prefix
-    if (call.status == 'missed' && direction == 'incoming') {
+    if (call.status == CallStatus.missed && direction == 'incoming') {
       parts.add('Missed');
     } else if (direction == 'incoming') {
       parts.add('Incoming');
@@ -108,29 +112,15 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
     }
 
     // Add call type
-    parts.add(call.callType == 'video' ? 'video call' : 'voice call');
+    parts.add(call.isVideoCall ? 'video call' : 'voice call');
 
     // Add duration if answered
     if (call.wasAnswered == true && call.durationSeconds > 0) {
-      final duration = _formatDuration(call.durationSeconds);
+      final duration = DateTimeUtils.formatDurationHuman(call.durationSeconds);
       parts.add('($duration)');
     }
 
     return parts.join(' ');
-  }
-
-  String _formatDuration(int seconds) {
-    if (seconds < 60) {
-      return '${seconds}s';
-    }
-    final minutes = seconds ~/ 60;
-    final remainingSeconds = seconds % 60;
-    if (minutes < 60) {
-      return remainingSeconds > 0 ? '${minutes}m ${remainingSeconds}s' : '${minutes}m';
-    }
-    final hours = minutes ~/ 60;
-    final remainingMinutes = minutes % 60;
-    return '${hours}h ${remainingMinutes}m';
   }
 
   Future<void> _deleteCall(CallModel call) async {
@@ -139,7 +129,9 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Call'),
-        content: const Text('Are you sure you want to delete this call from history?'),
+        content: const Text(
+          'Are you sure you want to delete this call from history?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -154,25 +146,59 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
     );
 
     if (confirm == true) {
-      setState(() {
-        _callHistory.remove(call);
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Call deleted from history')),
-        );
+      await _removeCallFromHistory(call);
+    }
+  }
+
+  Future<void> _removeCallFromHistory(CallModel call) async {
+    final removedIndex = _callHistory.indexOf(call);
+    if (removedIndex == -1) {
+      return;
+    }
+
+    setState(() {
+      _callHistory.removeAt(removedIndex);
+    });
+
+    try {
+      await CallService.deleteCallHistoryEntry(callId: call.callId);
+      if (!mounted) {
+        return;
       }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Call deleted from history')),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      final restoreIndex = removedIndex <= _callHistory.length
+          ? removedIndex
+          : _callHistory.length;
+
+      setState(() {
+        _callHistory.insert(restoreIndex, call);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to delete call from history')),
+      );
     }
   }
 
   Widget _buildCallTile(CallModel call) {
     final direction = _getCallDirection(call);
-    final isMissed = call.status == 'missed' && direction == 'incoming';
-    
+    final isMissed =
+        call.status == CallStatus.missed && direction == 'incoming';
+
     // Determine the contact (other party in the call)
     final isOutgoing = direction == 'outgoing';
     final contactName = isOutgoing ? call.receiverName : call.initiatorName;
-    final contactProfilePic = isOutgoing ? call.receiverProfilePic : call.initiatorProfilePic;
+    final contactProfilePic = isOutgoing
+        ? call.receiverProfilePic
+        : call.initiatorProfilePic;
 
     return Dismissible(
       key: Key(call.callId),
@@ -200,105 +226,89 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
                   HapticFeedback.lightImpact();
                   Navigator.pop(ctx, true);
                 },
-                child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                child: const Text(
+                  'Delete',
+                  style: TextStyle(color: Colors.red),
+                ),
               ),
             ],
           ),
         );
       },
       onDismissed: (direction) {
-        setState(() {
-          _callHistory.remove(call);
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Call deleted from history'),
-            action: SnackBarAction(
-              label: 'UNDO',
-              onPressed: () {
-                setState(() {
-                  _callHistory.insert(0, call);
-                });
-              },
-            ),
-          ),
-        );
+        unawaited(_removeCallFromHistory(call));
       },
       child: ListTile(
-      leading: CircleAvatar(
-        radius: 24,
-        backgroundImage: contactProfilePic.isNotEmpty
-            ? CachedNetworkImageProvider(contactProfilePic)
-            : null,
-        child: contactProfilePic.isEmpty
-            ? Text(contactName.substring(0, 1).toUpperCase())
-            : null,
-      ),
-      title: Text(
-        contactName,
-        style: TextStyle(
-          fontWeight: isMissed ? FontWeight.bold : FontWeight.normal,
-          color: isMissed ? Colors.red : null,
+        leading: CircleAvatar(
+          radius: 24,
+          backgroundImage: contactProfilePic.isNotEmpty
+              ? CachedNetworkImageProvider(contactProfilePic)
+              : null,
+          child: contactProfilePic.isEmpty
+              ? Text(contactName.substring(0, 1).toUpperCase())
+              : null,
         ),
-      ),
-      subtitle: Row(
-        children: [
-          Icon(
-            _getCallIcon(call),
-            size: 16,
-            color: _getCallIconColor(call),
+        title: Text(
+          contactName,
+          style: TextStyle(
+            fontWeight: isMissed ? FontWeight.bold : FontWeight.normal,
+            color: isMissed ? Colors.red : null,
           ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Text(
-              _getCallSummary(call),
-              style: TextStyle(
-                fontSize: 13,
-                color: isMissed ? Colors.red.shade300 : Colors.grey,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-      trailing: SizedBox(
-        width: 80,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.end,
+        ),
+        subtitle: Row(
           children: [
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  timeago.format(call.initiatedAt, locale: 'en_short'),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isMissed ? Colors.red : Colors.grey,
-                  ),
+            Icon(_getCallIcon(call), size: 16, color: _getCallIconColor(call)),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                _getCallSummary(call),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isMissed ? Colors.red.shade300 : Colors.grey,
                 ),
-                const SizedBox(height: 2),
-              ],
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              icon: Icon(
-                call.callType == 'video' ? Icons.videocam : Icons.call,
-                size: 20,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              color: Colors.green,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              onPressed: () {
-                HapticFeedback.lightImpact();
-                _initiateCallFromHistory(call, call.callType);
-              },
-              tooltip: 'Call $contactName',
             ),
           ],
         ),
-      ),
+        trailing: SizedBox(
+          width: 80,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    timeago.format(call.initiatedAt, locale: 'en_short'),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isMissed ? Colors.red : Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                ],
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: Icon(
+                  call.isVideoCall ? Icons.videocam : Icons.call,
+                  size: 20,
+                ),
+                color: Colors.green,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () {
+                  HapticFeedback.lightImpact();
+                  _initiateCallFromHistory(call, call.callType);
+                },
+                tooltip: 'Call $contactName',
+              ),
+            ],
+          ),
+        ),
         onTap: () {
           HapticFeedback.selectionClick();
           _showCallDetails(call);
@@ -336,7 +346,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
               onTap: () {
                 HapticFeedback.lightImpact();
                 Navigator.pop(context);
-                _initiateCallFromHistory(call, 'voice');
+                _initiateCallFromHistory(call, CallType.voice);
               },
             ),
             ListTile(
@@ -345,7 +355,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
               onTap: () {
                 HapticFeedback.lightImpact();
                 Navigator.pop(context);
-                _initiateCallFromHistory(call, 'video');
+                _initiateCallFromHistory(call, CallType.video);
               },
             ),
             ListTile(
@@ -360,7 +370,10 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
             const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.delete, color: Colors.red),
-              title: const Text('Delete Call', style: TextStyle(color: Colors.red)),
+              title: const Text(
+                'Delete Call',
+                style: TextStyle(color: Colors.red),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _deleteCall(call);
@@ -382,12 +395,12 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Call Details',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text('Call Details', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: AppSpacing.md),
-            _buildDetailRow('Type', call.callType == 'video' ? 'Video Call' : 'Voice Call'),
+            _buildDetailRow(
+              'Type',
+              call.isVideoCall ? 'Video Call' : 'Voice Call',
+            ),
             _buildDetailRow('Status', call.status.toUpperCase()),
             _buildDetailRow('Initiated', call.initiatedAt.toString()),
             if (call.answeredAt != null)
@@ -395,33 +408,45 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
             if (call.endedAt != null)
               _buildDetailRow('Ended', call.endedAt.toString()),
             if (call.durationSeconds > 0)
-              _buildDetailRow('Duration', _formatDuration(call.durationSeconds)),
+              _buildDetailRow(
+                'Duration',
+                DateTimeUtils.formatDurationHuman(call.durationSeconds),
+              ),
             if (call.endReason != null)
-              _buildDetailRow('End Reason', call.endReason!.replaceAll('_', ' ').toUpperCase()),
+              _buildDetailRow(
+                'End Reason',
+                call.endReason!.replaceAll('_', ' ').toUpperCase(),
+              ),
             if (call.avgNetworkQuality != null)
-              _buildDetailRow('Avg Network Quality', _getNetworkQualityText(call.avgNetworkQuality!)),
+              _buildDetailRow(
+                'Avg Network Quality',
+                _getNetworkQualityText(call.avgNetworkQuality!),
+              ),
             if (call.avgBitrate != null)
-              _buildDetailRow('Avg Bitrate', '${call.avgBitrate!.toStringAsFixed(1)} kbps'),
+              _buildDetailRow(
+                'Avg Bitrate',
+                '${call.avgBitrate!.toStringAsFixed(1)} kbps',
+              ),
             const SizedBox(height: AppSpacing.md),
             Row(
               children: [
-                if (call.callType == 'video')
+                if (call.isVideoCall)
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: () {
                         Navigator.pop(context);
-                        _initiateCallFromHistory(call, 'video');
+                        _initiateCallFromHistory(call, CallType.video);
                       },
                       icon: const Icon(Icons.videocam),
                       label: const Text('Video Call'),
                     ),
                   ),
-                if (call.callType == 'video') const SizedBox(width: AppSpacing.sm),
+                if (call.isVideoCall) const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () {
                       Navigator.pop(context);
-                      _initiateCallFromHistory(call, 'voice');
+                      _initiateCallFromHistory(call, CallType.voice);
                     },
                     icon: const Icon(Icons.call),
                     label: const Text('Voice Call'),
@@ -451,9 +476,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
               ),
             ),
           ),
-          Expanded(
-            child: Text(value),
-          ),
+          Expanded(child: Text(value)),
         ],
       ),
     );
@@ -461,13 +484,20 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
 
   String _getNetworkQualityText(int quality) {
     switch (quality) {
-      case 1: return 'Excellent';
-      case 2: return 'Good';
-      case 3: return 'Poor';
-      case 4: return 'Bad';
-      case 5: return 'Very Bad';
-      case 6: return 'Disconnected';
-      default: return 'Unknown';
+      case 1:
+        return 'Excellent';
+      case 2:
+        return 'Good';
+      case 3:
+        return 'Poor';
+      case 4:
+        return 'Bad';
+      case 5:
+        return 'Very Bad';
+      case 6:
+        return 'Disconnected';
+      default:
+        return 'Unknown';
     }
   }
 
@@ -482,19 +512,18 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
     );
   }
 
-  Future<void> _initiateCallFromHistory(CallModel previousCall, String callType) async {
+  Future<void> _initiateCallFromHistory(
+    CallModel previousCall,
+    String callType,
+  ) async {
     if (_currentUserId == null) return;
 
     // Determine who to call (the other person in the call)
-    final receiverId = previousCall.initiatorId == _currentUserId
-        ? previousCall.receiverId
-        : previousCall.initiatorId;
-    final receiverName = previousCall.initiatorId == _currentUserId
-        ? previousCall.receiverName
-        : previousCall.initiatorName;
-    final receiverProfilePic = previousCall.initiatorId == _currentUserId
-        ? previousCall.receiverProfilePic
-        : previousCall.initiatorProfilePic;
+    final receiverId = previousCall.getOtherUserId(_currentUserId!);
+    final receiverName = previousCall.getOtherUserName(_currentUserId!);
+    final receiverProfilePic = previousCall.getOtherUserProfilePic(
+      _currentUserId!,
+    );
 
     final currentUser = await AuthService.getCurrentUser();
     if (currentUser == null || !mounted) return;
@@ -522,7 +551,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
 
     try {
       print('[CallHistory] Initiating ${callType} call from history...');
-      
+
       // Initiate call
       final call = await CallService.initiateCall(
         initiatorId: currentUser.uid,
@@ -552,12 +581,12 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
       final agoraService = AgoraService();
       await agoraService.initialize();
       print('[CallHistory] Agora initialized');
-      
+
       await agoraService.joinChannel(
         channelName: call.callId,
         uid: localUid,
         token: token,
-        isVideoCall: callType == 'video',
+        isVideoCall: callType == CallType.video,
       );
       print('[CallHistory] Joined Agora channel');
 
@@ -579,7 +608,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
               try {
                 await CallService.endCall(
                   callId: call.callId,
-                  endReason: 'user_ended',
+                  endReason: CallEndReason.userEnded,
                 );
                 await agoraService.dispose();
               } catch (e) {
@@ -597,7 +626,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
     } catch (e) {
       print('[CallHistory] Error initiating call from history: $e');
       print('[CallHistory] Error type: ${e.runtimeType}');
-      
+
       if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop(); // Close loading dialog
       }
@@ -692,58 +721,54 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
       body: _isLoading
           ? _buildSkeletonLoader()
           : _callHistory.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.call,
-                        size: 64,
-                        color: Colors.grey.shade400,
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      Text(
-                        'No calls yet',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              color: Colors.grey.shade600,
-                            ),
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      Text(
-                        'Your call history will appear here',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey.shade500,
-                            ),
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-                      ElevatedButton.icon(
-                        onPressed: _showDialPad,
-                        icon: const Icon(Icons.dialpad),
-                        label: const Text('Make a Call'),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.call, size: 64, color: Colors.grey.shade400),
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    'No calls yet',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: Colors.grey.shade600,
+                    ),
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadCallHistory,
-                  child: AnimatedList(
-                    key: _listKey,
-                    initialItemCount: _callHistory.length,
-                    itemBuilder: (context, index, animation) {
-                      if (index >= _callHistory.length) {
-                        return const SizedBox.shrink();
-                      }
-                      final call = _callHistory[index];
-                      return SizeTransition(
-                        sizeFactor: animation,
-                        child: FadeTransition(
-                          opacity: animation,
-                          child: _buildCallTile(call),
-                        ),
-                      );
-                    },
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    'Your call history will appear here',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey.shade500,
+                    ),
                   ),
-                ),
+                  const SizedBox(height: AppSpacing.lg),
+                  ElevatedButton.icon(
+                    onPressed: _showDialPad,
+                    icon: const Icon(Icons.dialpad),
+                    label: const Text('Make a Call'),
+                  ),
+                ],
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: _loadCallHistory,
+              child: AnimatedList(
+                key: _listKey,
+                initialItemCount: _callHistory.length,
+                itemBuilder: (context, index, animation) {
+                  if (index >= _callHistory.length) {
+                    return const SizedBox.shrink();
+                  }
+                  final call = _callHistory[index];
+                  return SizeTransition(
+                    sizeFactor: animation,
+                    child: FadeTransition(
+                      opacity: animation,
+                      child: _buildCallTile(call),
+                    ),
+                  );
+                },
+              ),
+            ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           HapticFeedback.mediumImpact();
@@ -800,7 +825,7 @@ class _DialPadWidgetState extends State<DialPadWidget> {
 
     try {
       final found = await FirebaseService.searchUserByEmailOrNumber(query);
-      
+
       if (!mounted) return;
 
       setState(() {
@@ -810,9 +835,9 @@ class _DialPadWidgetState extends State<DialPadWidget> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _searching = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Search failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Search failed: $e')));
     }
   }
 
@@ -820,9 +845,9 @@ class _DialPadWidgetState extends State<DialPadWidget> {
     if (_foundUser == null || _currentUser == null) return;
 
     if (_foundUser!.uid == _currentUser!.uid) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You cannot call yourself')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('You cannot call yourself')));
       return;
     }
 
@@ -849,7 +874,7 @@ class _DialPadWidgetState extends State<DialPadWidget> {
 
     try {
       print('[CallHistory] Initiating ${callType} call...');
-      
+
       // Initiate call
       final call = await CallService.initiateCall(
         initiatorId: _currentUser!.uid,
@@ -879,12 +904,12 @@ class _DialPadWidgetState extends State<DialPadWidget> {
       final agoraService = AgoraService();
       await agoraService.initialize();
       print('[CallHistory] Agora initialized');
-      
+
       await agoraService.joinChannel(
         channelName: call.callId,
         uid: localUid,
         token: token,
-        isVideoCall: callType == 'video',
+        isVideoCall: callType == CallType.video,
       );
       print('[CallHistory] Joined Agora channel');
 
@@ -909,7 +934,7 @@ class _DialPadWidgetState extends State<DialPadWidget> {
               try {
                 await CallService.endCall(
                   callId: call.callId,
-                  endReason: 'user_ended',
+                  endReason: CallEndReason.userEnded,
                 );
                 await agoraService.dispose();
               } catch (e) {
@@ -927,7 +952,7 @@ class _DialPadWidgetState extends State<DialPadWidget> {
     } catch (e) {
       print('[CallHistory] Error initiating call: $e');
       print('[CallHistory] Error type: ${e.runtimeType}');
-      
+
       if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop(); // Close loading dialog
       }
@@ -1054,7 +1079,9 @@ class _DialPadWidgetState extends State<DialPadWidget> {
                         : null,
                     child: _foundUser!.profilePic.isEmpty
                         ? Text(
-                            _foundUser!.displayName.substring(0, 1).toUpperCase(),
+                            _foundUser!.displayName
+                                .substring(0, 1)
+                                .toUpperCase(),
                             style: const TextStyle(fontSize: 24),
                           )
                         : null,
@@ -1114,11 +1141,7 @@ class _DialPadWidgetState extends State<DialPadWidget> {
               padding: const EdgeInsets.all(AppSpacing.md),
               child: Column(
                 children: [
-                  Icon(
-                    Icons.person_off,
-                    size: 48,
-                    color: Colors.grey.shade400,
-                  ),
+                  Icon(Icons.person_off, size: 48, color: Colors.grey.shade400),
                   const SizedBox(height: AppSpacing.sm),
                   Text(
                     'User not found',

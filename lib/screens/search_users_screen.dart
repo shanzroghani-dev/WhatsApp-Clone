@@ -55,7 +55,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
 
     try {
       final found = await FirebaseService.searchUserByEmailOrNumber(query);
-      
+
       if (!mounted) return;
 
       setState(() {
@@ -65,9 +65,9 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _searching = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Search failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Search failed: $e')));
     }
   }
 
@@ -91,12 +91,18 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
       MaterialPageRoute(
         builder: (routeContext) {
           // Capture global providers from parent context
-          final recordingProvider =
-              Provider.of<RecordingStateNotifier>(context, listen: false);
-          final mediaProvider =
-              Provider.of<MediaStateNotifier>(context, listen: false);
-          final uploadProvider =
-              Provider.of<UploadStateNotifier>(context, listen: false);
+          final recordingProvider = Provider.of<RecordingStateNotifier>(
+            context,
+            listen: false,
+          );
+          final mediaProvider = Provider.of<MediaStateNotifier>(
+            context,
+            listen: false,
+          );
+          final uploadProvider = Provider.of<UploadStateNotifier>(
+            context,
+            listen: false,
+          );
 
           // Get or create Messages provider for this chat conversation
           final chatKey = MessagesProviderManager.getChatKey(
@@ -125,10 +131,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                 value: messagesProvider,
               ),
             ],
-            child: ChatScreen(
-              currentUser: _currentUser!,
-              peer: _foundUser!,
-            ),
+            child: ChatScreen(currentUser: _currentUser!, peer: _foundUser!),
           );
         },
       ),
@@ -141,9 +144,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
     final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Find Users'),
-      ),
+      appBar: AppBar(title: const Text('Find Users')),
       body: Column(
         children: [
           // Search Bar Section
@@ -182,9 +183,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                   decoration: BoxDecoration(
                     gradient: AppColors.primaryGradient,
                     borderRadius: BorderRadius.circular(AppRadius.sm),
-                    boxShadow: [
-                      AppShadows.coloredShadow(AppColors.accent),
-                    ],
+                    boxShadow: [AppShadows.coloredShadow(AppColors.accent)],
                   ),
                   child: ElevatedButton.icon(
                     onPressed: _searching ? null : _searchUser,
@@ -220,9 +219,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
           ),
 
           // Results Section
-          Expanded(
-            child: _buildResultsSection(theme, colorScheme),
-          ),
+          Expanded(child: _buildResultsSection(theme, colorScheme)),
         ],
       ),
     );
@@ -230,7 +227,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
 
   Widget _buildResultsSection(ThemeData theme, ColorScheme colorScheme) {
     final isDark = theme.brightness == Brightness.dark;
-    
+
     if (_searching) {
       return Center(
         child: Column(
@@ -255,7 +252,9 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
             Text(
               'Searching...',
               style: theme.textTheme.titleMedium?.copyWith(
-                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                color: isDark
+                    ? AppColors.darkTextSecondary
+                    : AppColors.lightTextSecondary,
               ),
             ),
           ],
@@ -276,9 +275,7 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                 decoration: BoxDecoration(
                   gradient: AppColors.primaryGradient,
                   shape: BoxShape.circle,
-                  boxShadow: [
-                    AppShadows.coloredShadow(AppColors.accent),
-                  ],
+                  boxShadow: [AppShadows.coloredShadow(AppColors.accent)],
                 ),
                 child: const Icon(
                   Icons.person_search,
@@ -298,7 +295,9 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
               Text(
                 'Search by email or unique chat number\nto start a conversation',
                 style: theme.textTheme.bodyLarge?.copyWith(
-                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -317,7 +316,9 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
               width: 100,
               height: 100,
               decoration: BoxDecoration(
-                color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+                color: isDark
+                    ? Colors.white.withOpacity(0.1)
+                    : Colors.black.withOpacity(0.05),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -340,7 +341,9 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
               child: Text(
                 'Try searching with a different email or number',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -370,7 +373,9 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
               borderRadius: BorderRadius.circular(AppRadius.lg),
               boxShadow: [AppShadows.card],
               border: Border.all(
-                color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+                color: isDark
+                    ? Colors.white.withOpacity(0.05)
+                    : Colors.black.withOpacity(0.05),
                 width: 1,
               ),
             ),
@@ -408,7 +413,9 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                               color: AppColors.success,
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                                color: isDark
+                                    ? AppColors.darkSurface
+                                    : AppColors.lightSurface,
                                 width: 3,
                               ),
                             ),
@@ -449,7 +456,9 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                     Container(
                       padding: const EdgeInsets.all(AppSpacing.lg),
                       decoration: BoxDecoration(
-                        color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                        color: isDark
+                            ? AppColors.darkSurfaceVariant
+                            : AppColors.lightSurfaceVariant,
                         borderRadius: BorderRadius.circular(AppRadius.sm),
                       ),
                       child: Row(
@@ -458,14 +467,18 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                           Icon(
                             Icons.info_outline,
                             size: 16,
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            color: isDark
+                                ? AppColors.darkTextSecondary
+                                : AppColors.lightTextSecondary,
                           ),
                           const SizedBox(width: AppSpacing.sm),
                           Flexible(
                             child: Text(
                               _foundUser!.status,
                               style: theme.textTheme.bodyMedium?.copyWith(
-                                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                color: isDark
+                                    ? AppColors.darkTextSecondary
+                                    : AppColors.lightTextSecondary,
                               ),
                               textAlign: TextAlign.center,
                             ),
@@ -483,7 +496,9 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                           icon: const Icon(Icons.close),
                           label: const Text('Cancel'),
                           style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: AppSpacing.lg,
+                            ),
                             side: BorderSide(
                               color: isDark ? Colors.white24 : Colors.black26,
                               width: 1.5,
@@ -508,7 +523,10 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                           ),
                           child: ElevatedButton.icon(
                             onPressed: _startChat,
-                            icon: const Icon(Icons.chat_rounded, color: Colors.white),
+                            icon: const Icon(
+                              Icons.chat_rounded,
+                              color: Colors.white,
+                            ),
                             label: const Text(
                               'Start Chat',
                               style: TextStyle(
@@ -519,9 +537,13 @@ class _SearchUsersScreenState extends State<SearchUsersScreen> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.transparent,
                               shadowColor: Colors.transparent,
-                              padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: AppSpacing.lg,
+                              ),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(AppRadius.sm),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.sm,
+                                ),
                               ),
                             ),
                           ),

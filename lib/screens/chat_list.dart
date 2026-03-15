@@ -578,67 +578,93 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                 confirmDismiss: (direction) async {
                                   HapticFeedback.mediumImpact();
                                   return await showDialog<bool>(
-                                    context: context,
-                                    builder: (context) => AlertDialog(
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(AppRadius.md),
-                                      ),
-                                      title: Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.all(AppSpacing.sm),
-                                            decoration: BoxDecoration(
-                                              color: AppColors.error.withValues(alpha: 0.1),
-                                              borderRadius: BorderRadius.circular(AppRadius.xs),
-                                            ),
-                                            child: Icon(
-                                              Icons.delete_rounded,
-                                              color: AppColors.error,
-                                              size: 24,
+                                        context: context,
+                                        builder: (context) => AlertDialog(
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              AppRadius.md,
                                             ),
                                           ),
-                                          const SizedBox(width: AppSpacing.md),
-                                          const Text('Delete Chat'),
-                                        ],
-                                      ),
-                                      content: Text('Delete this chat with ${user.displayName}?'),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(context, false),
-                                          child: const Text('Cancel'),
-                                        ),
-                                        Container(
-                                          decoration: BoxDecoration(
-                                            color: AppColors.error,
-                                            borderRadius: BorderRadius.circular(AppRadius.sm),
+                                          title: Row(
+                                            children: [
+                                              Container(
+                                                padding: const EdgeInsets.all(
+                                                  AppSpacing.sm,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: AppColors.error
+                                                      .withValues(alpha: 0.1),
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        AppRadius.xs,
+                                                      ),
+                                                ),
+                                                child: Icon(
+                                                  Icons.delete_rounded,
+                                                  color: AppColors.error,
+                                                  size: 24,
+                                                ),
+                                              ),
+                                              const SizedBox(
+                                                width: AppSpacing.md,
+                                              ),
+                                              const Text('Delete Chat'),
+                                            ],
                                           ),
-                                          child: TextButton(
-                                            onPressed: () => Navigator.pop(context, true),
-                                            child: const Text(
-                                              'Delete',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.w700,
+                                          content: Text(
+                                            'Delete this chat with ${user.displayName}?',
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(context, false),
+                                              child: const Text('Cancel'),
+                                            ),
+                                            Container(
+                                              decoration: BoxDecoration(
+                                                color: AppColors.error,
+                                                borderRadius:
+                                                    BorderRadius.circular(
+                                                      AppRadius.sm,
+                                                    ),
+                                              ),
+                                              child: TextButton(
+                                                onPressed: () => Navigator.pop(
+                                                  context,
+                                                  true,
+                                                ),
+                                                child: const Text(
+                                                  'Delete',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
                                               ),
                                             ),
-                                          ),
+                                          ],
                                         ),
-                                      ],
-                                    ),
-                                  ) ?? false;
+                                      ) ??
+                                      false;
                                 },
                                 onDismissed: (direction) {
                                   HapticFeedback.heavyImpact();
                                   _deleteChatForMe(user);
                                 },
                                 background: Container(
-                                  margin: const EdgeInsets.only(bottom: AppSpacing.md),
+                                  margin: const EdgeInsets.only(
+                                    bottom: AppSpacing.md,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: AppColors.error,
-                                    borderRadius: BorderRadius.circular(AppRadius.md),
+                                    borderRadius: BorderRadius.circular(
+                                      AppRadius.md,
+                                    ),
                                   ),
                                   alignment: Alignment.centerRight,
-                                  padding: const EdgeInsets.only(right: AppSpacing.xl),
+                                  padding: const EdgeInsets.only(
+                                    right: AppSpacing.xl,
+                                  ),
                                   child: Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
@@ -660,245 +686,259 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                   ),
                                 ),
                                 child: Container(
-                                margin: const EdgeInsets.only(
-                                  bottom: AppSpacing.md,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isDark
-                                      ? AppColors.darkSurface
-                                      : AppColors.lightSurface,
-                                  borderRadius: BorderRadius.circular(
-                                    AppRadius.md,
+                                  margin: const EdgeInsets.only(
+                                    bottom: AppSpacing.md,
                                   ),
-                                  boxShadow: AppShadows.cardList,
-                                  border: Border.all(
+                                  decoration: BoxDecoration(
                                     color: isDark
-                                        ? Colors.white.withValues(alpha: 0.05)
-                                        : Colors.black.withValues(alpha: 0.05),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    onTap: () => _openChat(user),
-                                    onLongPress: () =>
-                                        _showDeleteChatDialog(user),
+                                        ? AppColors.darkSurface
+                                        : AppColors.lightSurface,
                                     borderRadius: BorderRadius.circular(
                                       AppRadius.md,
                                     ),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(
-                                        AppSpacing.lg,
+                                    boxShadow: AppShadows.cardList,
+                                    border: Border.all(
+                                      color: isDark
+                                          ? Colors.white.withValues(alpha: 0.05)
+                                          : Colors.black.withValues(
+                                              alpha: 0.05,
+                                            ),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () => _openChat(user),
+                                      onLongPress: () =>
+                                          _showDeleteChatDialog(user),
+                                      borderRadius: BorderRadius.circular(
+                                        AppRadius.md,
                                       ),
-                                      child: Row(
-                                        children: [
-                                          Stack(
-                                            children: [
-                                              Container(
-                                                padding: const EdgeInsets.all(
-                                                  3,
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(
+                                          AppSpacing.lg,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Stack(
+                                              children: [
+                                                Container(
+                                                  padding: const EdgeInsets.all(
+                                                    3,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    gradient: user.isOnline
+                                                        ? AppColors
+                                                              .primaryGradient
+                                                        : null,
+                                                    color: user.isOnline
+                                                        ? null
+                                                        : (isDark
+                                                              ? Colors.white12
+                                                              : Colors.black12),
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: ProfileAvatar(
+                                                    imageUrl: user.profilePic,
+                                                    displayName:
+                                                        user.displayName,
+                                                    radius: 28,
+                                                    showOnlineIndicator: false,
+                                                  ),
                                                 ),
-                                                decoration: BoxDecoration(
-                                                  gradient: user.isOnline
-                                                      ? AppColors
-                                                            .primaryGradient
-                                                      : null,
-                                                  color: user.isOnline
-                                                      ? null
-                                                      : (isDark
-                                                            ? Colors.white12
-                                                            : Colors.black12),
-                                                  shape: BoxShape.circle,
-                                                ),
-                                                child: ProfileAvatar(
-                                                  imageUrl: user.profilePic,
-                                                  displayName: user.displayName,
-                                                  radius: 28,
-                                                  showOnlineIndicator: false,
-                                                ),
-                                              ),
-                                              if (user.isOnline)
-                                                Positioned(
-                                                  right: 0,
-                                                  bottom: 0,
-                                                  child: Container(
-                                                    width: 16,
-                                                    height: 16,
-                                                    decoration: BoxDecoration(
-                                                      color: AppColors.success,
-                                                      shape: BoxShape.circle,
-                                                      border: Border.all(
-                                                        color: isDark
-                                                            ? AppColors
-                                                                  .darkSurface
-                                                            : AppColors
-                                                                  .lightSurface,
-                                                        width: 2.5,
+                                                if (user.isOnline)
+                                                  Positioned(
+                                                    right: 0,
+                                                    bottom: 0,
+                                                    child: Container(
+                                                      width: 16,
+                                                      height: 16,
+                                                      decoration: BoxDecoration(
+                                                        color:
+                                                            AppColors.success,
+                                                        shape: BoxShape.circle,
+                                                        border: Border.all(
+                                                          color: isDark
+                                                              ? AppColors
+                                                                    .darkSurface
+                                                              : AppColors
+                                                                    .lightSurface,
+                                                          width: 2.5,
+                                                        ),
                                                       ),
                                                     ),
                                                   ),
-                                                ),
-                                            ],
-                                          ),
-                                          const SizedBox(width: AppSpacing.lg),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Row(
-                                                  children: [
-                                                    Expanded(
-                                                      child: Text(
-                                                        user.displayName,
-                                                        style: theme
-                                                            .textTheme
-                                                            .titleMedium
-                                                            ?.copyWith(
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w700,
-                                                              color: isDark
-                                                                  ? AppColors
-                                                                        .darkText
-                                                                  : AppColors
-                                                                        .lightText,
-                                                            ),
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
+                                              ],
+                                            ),
+                                            const SizedBox(
+                                              width: AppSpacing.lg,
+                                            ),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child: Text(
+                                                          user.displayName,
+                                                          style: theme
+                                                              .textTheme
+                                                              .titleMedium
+                                                              ?.copyWith(
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w700,
+                                                                color: isDark
+                                                                    ? AppColors
+                                                                          .darkText
+                                                                    : AppColors
+                                                                          .lightText,
+                                                              ),
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                        ),
                                                       ),
-                                                    ),
-                                                    const SizedBox(
-                                                      width: AppSpacing.sm,
-                                                    ),
-                                                    Text(
-                                                      _formatMessageTime(
-                                                        _lastMessageTimeByUid[user
-                                                            .uid],
-                                                      ),
-                                                      style: TextStyle(
-                                                        fontSize: 11,
-                                                        color: isDark
-                                                            ? AppColors
-                                                                  .darkTextSecondary
-                                                            : AppColors
-                                                                  .lightTextSecondary,
-                                                      ),
-                                                    ),
-                                                    if (user.isOnline)
                                                       const SizedBox(
                                                         width: AppSpacing.sm,
                                                       ),
-                                                    if (user.isOnline)
-                                                      Container(
-                                                        padding:
-                                                            const EdgeInsets.symmetric(
-                                                              horizontal:
-                                                                  AppSpacing.sm,
-                                                              vertical: 2,
-                                                            ),
-                                                        decoration: BoxDecoration(
-                                                          gradient: AppColors
-                                                              .accentGradient,
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                AppRadius.xs,
-                                                              ),
+                                                      Text(
+                                                        _formatMessageTime(
+                                                          _lastMessageTimeByUid[user
+                                                              .uid],
                                                         ),
-                                                        child: const Text(
-                                                          'Online',
-                                                          style: TextStyle(
-                                                            fontSize: 10,
-                                                            fontWeight:
-                                                                FontWeight.w700,
-                                                            color: Colors.white,
-                                                          ),
+                                                        style: TextStyle(
+                                                          fontSize: 11,
+                                                          color: isDark
+                                                              ? AppColors
+                                                                    .darkTextSecondary
+                                                              : AppColors
+                                                                    .lightTextSecondary,
                                                         ),
                                                       ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  lastMessage.isNotEmpty
-                                                      ? _truncateMessage(
-                                                          lastMessage,
-                                                          40,
-                                                        )
-                                                      : (user.status.isNotEmpty
-                                                            ? user.status
-                                                            : '@${user.uniqueNumber}'),
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: TextStyle(
-                                                    color: isDark
-                                                        ? AppColors
-                                                              .darkTextSecondary
-                                                        : AppColors
-                                                              .lightTextSecondary,
-                                                    fontSize: 13,
-                                                    fontWeight:
-                                                        (_unreadCounts[user
-                                                                    .uid] ??
-                                                                0) >
-                                                            0
-                                                        ? FontWeight.w600
-                                                        : FontWeight.w400,
+                                                      if (user.isOnline)
+                                                        const SizedBox(
+                                                          width: AppSpacing.sm,
+                                                        ),
+                                                      if (user.isOnline)
+                                                        Container(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal:
+                                                                    AppSpacing
+                                                                        .sm,
+                                                                vertical: 2,
+                                                              ),
+                                                          decoration: BoxDecoration(
+                                                            gradient: AppColors
+                                                                .accentGradient,
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  AppRadius.xs,
+                                                                ),
+                                                          ),
+                                                          child: const Text(
+                                                            'Online',
+                                                            style: TextStyle(
+                                                              fontSize: 10,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700,
+                                                              color:
+                                                                  Colors.white,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                    ],
                                                   ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          const SizedBox(width: AppSpacing.sm),
-                                          if ((_unreadCounts[user.uid] ?? 0) >
-                                              0)
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: AppSpacing.sm,
-                                                    vertical: 4,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                gradient:
-                                                    AppColors.primaryGradient,
-                                                borderRadius:
-                                                    BorderRadius.circular(
-                                                      AppRadius.xs,
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    lastMessage.isNotEmpty
+                                                        ? _truncateMessage(
+                                                            lastMessage,
+                                                            40,
+                                                          )
+                                                        : (user
+                                                                  .status
+                                                                  .isNotEmpty
+                                                              ? user.status
+                                                              : '@${user.uniqueNumber}'),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      color: isDark
+                                                          ? AppColors
+                                                                .darkTextSecondary
+                                                          : AppColors
+                                                                .lightTextSecondary,
+                                                      fontSize: 13,
+                                                      fontWeight:
+                                                          (_unreadCounts[user
+                                                                      .uid] ??
+                                                                  0) >
+                                                              0
+                                                          ? FontWeight.w600
+                                                          : FontWeight.w400,
                                                     ),
-                                              ),
-                                              child: Text(
-                                                _unreadCounts[user.uid]
-                                                    .toString(),
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.w700,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            )
-                                          else
-                                            Container(
-                                              width: 32,
-                                              height: 32,
-                                              decoration: BoxDecoration(
-                                                gradient:
-                                                    AppColors.primaryGradient,
-                                                shape: BoxShape.circle,
-                                              ),
-                                              child: const Icon(
-                                                Icons.arrow_forward_ios,
-                                                size: 14,
-                                                color: Colors.white,
+                                                  ),
+                                                ],
                                               ),
                                             ),
-                                        ],
+                                            const SizedBox(
+                                              width: AppSpacing.sm,
+                                            ),
+                                            if ((_unreadCounts[user.uid] ?? 0) >
+                                                0)
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: AppSpacing.sm,
+                                                      vertical: 4,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  gradient:
+                                                      AppColors.primaryGradient,
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        AppRadius.xs,
+                                                      ),
+                                                ),
+                                                child: Text(
+                                                  _unreadCounts[user.uid]
+                                                      .toString(),
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.w700,
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              )
+                                            else
+                                              Container(
+                                                width: 32,
+                                                height: 32,
+                                                decoration: BoxDecoration(
+                                                  gradient:
+                                                      AppColors.primaryGradient,
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: const Icon(
+                                                  Icons.arrow_forward_ios,
+                                                  size: 14,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ));
+                              );
                             },
                           ),
                         ),

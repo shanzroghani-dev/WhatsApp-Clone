@@ -132,19 +132,18 @@ class _RootState extends State<Root> {
 
   void _subscribeToGlobalStatusUpdates(String currentUserUid) {
     _statusSubscription?.cancel();
-    _statusSubscription = FirebaseService.listenForStatusUpdates(
-      currentUserUid,
-    ).listen((statusUpdate) {
-      final messageId = statusUpdate['messageId'] as String?;
-      final localMessageId = statusUpdate['localMessageId'] as String?;
-      final delivered = statusUpdate['delivered'] as bool? ?? false;
-      final read = statusUpdate['read'] as bool? ?? false;
+    _statusSubscription = FirebaseService.listenForStatusUpdates(currentUserUid)
+        .listen((statusUpdate) {
+          final messageId = statusUpdate['messageId'] as String?;
+          final localMessageId = statusUpdate['localMessageId'] as String?;
+          final delivered = statusUpdate['delivered'] as bool? ?? false;
+          final read = statusUpdate['read'] as bool? ?? false;
 
-      final targetId = messageId ?? localMessageId;
-      if (targetId == null || targetId.isEmpty) return;
+          final targetId = messageId ?? localMessageId;
+          if (targetId == null || targetId.isEmpty) return;
 
-      unawaited(ChatService.updateMessageStatus(targetId, delivered, read));
-    });
+          unawaited(ChatService.updateMessageStatus(targetId, delivered, read));
+        });
   }
 
   @override

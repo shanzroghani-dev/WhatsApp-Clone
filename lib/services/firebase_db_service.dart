@@ -24,33 +24,33 @@ class FirebaseDBService {
 
   // Listen for incoming messages
   static Stream<Map<String, dynamic>> listenForMessages(String receiverUID) {
-    return _db
-        .ref('messages/$receiverUID')
-        .onValue
-        .map((event) {
-          final result = <String, dynamic>{};
-          if (event.snapshot.value is Map) {
-            final map = event.snapshot.value as Map;
-            map.forEach((key, value) {
-              if (value is Map) {
-                result[key] = {
-                  'id': key,
-                  ...value.cast<String, dynamic>(),
-                };
-              }
-            });
+    return _db.ref('messages/$receiverUID').onValue.map((event) {
+      final result = <String, dynamic>{};
+      if (event.snapshot.value is Map) {
+        final map = event.snapshot.value as Map;
+        map.forEach((key, value) {
+          if (value is Map) {
+            result[key] = {'id': key, ...value.cast<String, dynamic>()};
           }
-          return result;
         });
+      }
+      return result;
+    });
   }
 
   // Mark message as delivered
-  static Future<void> markAsDelivered(String receiverUID, String messageId) async {
+  static Future<void> markAsDelivered(
+    String receiverUID,
+    String messageId,
+  ) async {
     await _db.ref('messages/$receiverUID/$messageId/delivered').set(true);
   }
 
   // Delete old messages (cleanup)
-  static Future<void> deleteOldMessagesInCloud(String receiverUID, int cutoffTime) async {
+  static Future<void> deleteOldMessagesInCloud(
+    String receiverUID,
+    int cutoffTime,
+  ) async {
     final snapshot = await _db.ref('messages/$receiverUID').get();
     if (!snapshot.exists) return;
 

@@ -137,15 +137,23 @@ class _ChatScreenState extends State<ChatScreen> {
                           reverse: true,
                           itemCount: _messages.length,
                           itemBuilder: (_, index) {
-                            final message = _messages[_messages.length - 1 - index];
-                            final mine = message.fromId == widget.currentUser.uid;
+                            final message =
+                                _messages[_messages.length - 1 - index];
+                            final mine =
+                                message.fromId == widget.currentUser.uid;
                             return Align(
-                              alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+                              alignment: mine
+                                  ? Alignment.centerRight
+                                  : Alignment.centerLeft,
                               child: Container(
                                 constraints: BoxConstraints(
-                                  maxWidth: MediaQuery.of(context).size.width * 0.75,
+                                  maxWidth:
+                                      MediaQuery.of(context).size.width * 0.75,
                                 ),
-                                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 4,
+                                ),
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
                                   color: mine
@@ -164,7 +172,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                     Text(
                                       message.text,
                                       style: TextStyle(
-                                        color: mine ? Colors.white : Colors.black87,
+                                        color: mine
+                                            ? Colors.white
+                                            : Colors.black87,
                                         fontSize: 15,
                                       ),
                                     ),
@@ -173,10 +183,14 @@ class _ChatScreenState extends State<ChatScreen> {
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Text(
-                                          DateTimeUtils.formatTime(message.timestamp),
+                                          DateTimeUtils.formatTime(
+                                            message.timestamp,
+                                          ),
                                           style: TextStyle(
                                             fontSize: 11,
-                                            color: mine ? Colors.white70 : Colors.black54,
+                                            color: mine
+                                                ? Colors.white70
+                                                : Colors.black54,
                                           ),
                                         ),
                                         if (mine) ...[

@@ -21,7 +21,7 @@ class DateTimeUtils {
       'Sep',
       'Oct',
       'Nov',
-      'Dec'
+      'Dec',
     ];
     return '${months[dateTime.month - 1]} ${dateTime.day}';
   }
@@ -45,15 +45,20 @@ class DateTimeUtils {
   /// Get timestamp for start of today
   static int getTodayStart() {
     final now = DateTime.now();
-    return DateTime(now.year, now.month, now.day)
-        .millisecondsSinceEpoch;
+    return DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
   }
 
   /// Get timestamp for end of today
   static int getTodayEnd() {
     final now = DateTime.now();
-    return DateTime(now.year, now.month, now.day, 23, 59, 59)
-        .millisecondsSinceEpoch;
+    return DateTime(
+      now.year,
+      now.month,
+      now.day,
+      23,
+      59,
+      59,
+    ).millisecondsSinceEpoch;
   }
 
   /// Get timestamp for 24 hours ago
@@ -109,5 +114,36 @@ class DateTimeUtils {
     } else {
       return formatDate(lastSeen.millisecondsSinceEpoch);
     }
+  }
+
+  /// Format duration in MM:SS or HH:MM:SS format (for in-call display)
+  static String formatDurationMMSS(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes % 60;
+    final seconds = duration.inSeconds % 60;
+
+    if (hours > 0) {
+      return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  /// Format duration in seconds to human-readable format (e.g., "2m 30s", "45s", "1h 5m")
+  static String formatDurationHuman(int seconds) {
+    if (seconds < 60) {
+      return '${seconds}s';
+    }
+    final minutes = seconds ~/ 60;
+    final remainingSeconds = seconds % 60;
+    if (minutes < 60) {
+      return remainingSeconds > 0
+          ? '${minutes}m ${remainingSeconds}s'
+          : '${minutes}m';
+    }
+    final hours = minutes ~/ 60;
+    final remainingMinutes = minutes % 60;
+    return remainingMinutes > 0
+        ? '${hours}h ${remainingMinutes}m'
+        : '${hours}h';
   }
 }

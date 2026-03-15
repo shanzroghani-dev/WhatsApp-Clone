@@ -7,10 +7,7 @@ import 'package:whatsapp_clone/core/design_tokens.dart';
 class UserProfileScreen extends StatelessWidget {
   final UserModel user;
 
-  const UserProfileScreen({
-    super.key,
-    required this.user,
-  });
+  const UserProfileScreen({super.key, required this.user});
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +20,9 @@ class UserProfileScreen extends StatelessWidget {
           SliverAppBar(
             expandedHeight: 260,
             pinned: true,
-            backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+            backgroundColor: isDark
+                ? AppColors.darkSurface
+                : AppColors.lightSurface,
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 decoration: BoxDecoration(
@@ -70,7 +69,8 @@ class UserProfileScreen extends StatelessWidget {
                                 ? Image.network(
                                     user.profilePic,
                                     fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => _defaultAvatar(),
+                                    errorBuilder: (_, __, ___) =>
+                                        _defaultAvatar(),
                                   )
                                 : _defaultAvatar(),
                           ),
@@ -83,7 +83,9 @@ class UserProfileScreen extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w700,
-                        color: isDark ? AppColors.darkText : AppColors.lightText,
+                        color: isDark
+                            ? AppColors.darkText
+                            : AppColors.lightText,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -203,11 +205,7 @@ class UserProfileScreen extends StatelessWidget {
               color: AppColors.primary.withOpacity(0.1),
               borderRadius: BorderRadius.circular(AppRadius.sm),
             ),
-            child: Icon(
-              icon,
-              color: AppColors.primary,
-              size: 20,
-            ),
+            child: Icon(icon, color: AppColors.primary, size: 20),
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
@@ -286,7 +284,7 @@ class UserProfileScreen extends StatelessWidget {
       'Sep',
       'Oct',
       'Nov',
-      'Dec'
+      'Dec',
     ];
     return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
@@ -305,10 +303,7 @@ class UserProfileScreen extends StatelessWidget {
             child: Hero(
               tag: 'user_avatar_${user.uid}',
               child: InteractiveViewer(
-                child: Image.network(
-                  user.profilePic,
-                  fit: BoxFit.contain,
-                ),
+                child: Image.network(user.profilePic, fit: BoxFit.contain),
               ),
             ),
           ),

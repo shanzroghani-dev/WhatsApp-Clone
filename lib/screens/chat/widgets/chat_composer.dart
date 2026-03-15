@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
+import 'package:whatsapp_clone/utils/date_time_utils.dart';
 
 class ChatComposer extends StatelessWidget {
   final bool isDark;
@@ -41,12 +42,6 @@ class ChatComposer extends StatelessWidget {
     required this.onVoiceLongPressMoveUpdate,
     required this.onVoiceLongPressEnd,
   });
-
-  String _formatDuration(Duration duration) {
-    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -96,7 +91,7 @@ class ChatComposer extends StatelessWidget {
                     const SizedBox(width: 6),
                     Flexible(
                       child: Text(
-                        'Recording... ${_formatDuration(recordingDuration)}',
+                        'Recording... ${DateTimeUtils.formatDurationMMSS(recordingDuration)}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(

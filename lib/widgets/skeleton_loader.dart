@@ -82,11 +82,7 @@ class SkeletonCenter extends StatelessWidget {
   final double width;
   final double height;
 
-  const SkeletonCenter({
-    super.key,
-    this.width = 200,
-    this.height = 200,
-  });
+  const SkeletonCenter({super.key, this.width = 200, this.height = 200});
 
   @override
   Widget build(BuildContext context) {

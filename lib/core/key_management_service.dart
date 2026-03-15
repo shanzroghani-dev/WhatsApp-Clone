@@ -16,18 +16,31 @@ class KeyManagementService {
   static String _publicKeyStorageKey(String uid) => 'wc_public_key_$uid';
 
   static Future<KeyPairModel> ensureKeyPair(String uid) async {
-    final existingPrivate = await _secureStorage.read(key: _privateKeyStorageKey(uid));
-    final existingPublic = await _secureStorage.read(key: _publicKeyStorageKey(uid));
+    final existingPrivate = await _secureStorage.read(
+      key: _privateKeyStorageKey(uid),
+    );
+    final existingPublic = await _secureStorage.read(
+      key: _publicKeyStorageKey(uid),
+    );
 
     if (existingPrivate != null && existingPublic != null) {
-      return KeyPairModel(publicKey: existingPublic, privateKey: existingPrivate);
+      return KeyPairModel(
+        publicKey: existingPublic,
+        privateKey: existingPrivate,
+      );
     }
 
     final privateKey = base64Encode(encrypt.Key.fromSecureRandom(32).bytes);
     final publicKey = base64Encode(encrypt.Key.fromSecureRandom(32).bytes);
 
-    await _secureStorage.write(key: _privateKeyStorageKey(uid), value: privateKey);
-    await _secureStorage.write(key: _publicKeyStorageKey(uid), value: publicKey);
+    await _secureStorage.write(
+      key: _privateKeyStorageKey(uid),
+      value: privateKey,
+    );
+    await _secureStorage.write(
+      key: _publicKeyStorageKey(uid),
+      value: publicKey,
+    );
 
     return KeyPairModel(publicKey: publicKey, privateKey: privateKey);
   }

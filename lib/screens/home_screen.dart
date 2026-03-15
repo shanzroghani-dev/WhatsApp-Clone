@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:whatsapp_clone/auth/auth_service.dart';
 import 'package:whatsapp_clone/chat/call_service.dart';
+import 'package:whatsapp_clone/chat/call_service_utils.dart';
 import 'package:whatsapp_clone/core/agora_service.dart';
 import 'package:whatsapp_clone/core/security_service.dart';
 import 'package:whatsapp_clone/models/call_model.dart';
@@ -63,25 +64,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       print('[HomeScreen] 🔍 Checking for pending call from notification');
       final prefs = await SharedPreferences.getInstance();
-      
+
       final pendingCallId = prefs.getString('pending_call_id');
-      final pendingCallAccepted = prefs.getBool('pending_call_accepted') ?? false;
-      
+      final pendingCallAccepted =
+          prefs.getBool('pending_call_accepted') ?? false;
+
       if (pendingCallId != null && pendingCallAccepted) {
         print('[HomeScreen] ✅ Found pending call acceptance: $pendingCallId');
-        
+
         // Clear the pending call flags
         await prefs.remove('pending_call_id');
         await prefs.remove('pending_call_data');
         await prefs.remove('pending_call_accepted');
-        
+
         // Get current user
         final currentUser = await AuthService.getCurrentUser();
         if (currentUser == null || !mounted) {
           print('[HomeScreen] ⚠️ No user authenticated yet');
           return;
         }
-        
+
         // Accept the call in Firebase
         try {
           await CallService.acceptCall(
@@ -92,7 +94,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         } catch (e) {
           print('[HomeScreen] ⚠️ Error accepting call: $e');
         }
-        
+
         // Get the call and join it
         final call = await CallService.getCall(pendingCallId);
         if (call != null && mounted) {
@@ -122,12 +124,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (activeCall == null || !mounted) return;
 
       // If there's an active call, rejoin it
-      if (activeCall.status == 'active' && activeCall.answeredAt != null) {
+      if (activeCall.status == CallStatus.active &&
+          activeCall.answeredAt != null) {
         print('[HomeScreen] Detected active call on resume, rejoining...');
         await _joinActiveCall(activeCall);
-      } else if (activeCall.status == 'ringing' && activeCall.receiverId == user.uid) {
+      } else if (activeCall.status == CallStatus.ringing &&
+          activeCall.receiverId == user.uid) {
         // Show incoming call screen if call is still ringing
-        print('[HomeScreen] Detected ringing call on resume, showing incoming screen...');
+        print(
+          '[HomeScreen] Detected ringing call on resume, showing incoming screen...',
+        );
         _showIncomingCallScreen(activeCall);
       }
     } catch (e) {
@@ -140,23 +146,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final user = await AuthService.getCurrentUser();
       if (user == null || !mounted) return;
 
-      _incomingCallSubscription = CallService
-          .listenForIncomingCalls(user.uid)
-          .listen((call) {
+      _incomingCallSubscription = CallService.listenForIncomingCalls(user.uid).listen((
+        call,
+      ) {
         if (!mounted) return;
-        
+
         // Prevent duplicate navigation if already in a call screen
         if (_isInCallScreen) {
-          print('[HomeScreen] Already in call screen, ignoring new call notification');
+          print(
+            '[HomeScreen] Already in call screen, ignoring new call notification',
+          );
           return;
         }
-        
+
         // If call is ringing, show incoming call screen
-        if (call.status == 'ringing') {
+        if (call.status == CallStatus.ringing) {
           _showIncomingCallScreen(call);
         }
         // If call is already active (e.g., accepted from notification), join it directly
-        else if (call.status == 'active' && call.answeredAt != null) {
+        else if (call.status == CallStatus.active && call.answeredAt != null) {
           _joinActiveCall(call);
         }
       });
@@ -174,7 +182,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
 
       print('[HomeScreen] Joining active call: ${call.callId}');
-      
+
       // Get current user
       final currentUser = await AuthService.getCurrentUser();
       if (currentUser == null || !mounted) return;
@@ -218,7 +226,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           channelName: call.callId,
           uid: localUid,
           token: token,
-          isVideoCall: call.callType == 'video',
+          isVideoCall: call.callType == CallType.video,
         );
 
         if (!mounted) return;
@@ -238,13 +246,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 try {
                   await CallService.endCall(
                     callId: call.callId,
-                    endReason: 'user_ended',
+                    endReason: CallEndReason.userEnded,
                   );
                   await agoraService.dispose();
                 } catch (e) {
                   print('[HomeScreen] Error in onEndCall: $e');
                 }
-                
+
                 // Safely pop after current frame
                 if (context.mounted) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -278,8 +286,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final errorMessage = e.toString().contains('timed out')
             ? 'Connection timeout. Please check your internet and try again.'
             : e.toString().contains('token')
-                ? 'Failed to get call credentials. Please try again.'
-                : 'Failed to join call. Please try again.';
+            ? 'Failed to get call credentials. Please try again.'
+            : 'Failed to join call. Please try again.';
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -292,7 +300,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     } catch (e) {
       print('[HomeScreen] Unexpected error in _joinActiveCall: $e');
-      
+
       // Clear the flag on error
       if (mounted) {
         setState(() => _isInCallScreen = false);
@@ -309,125 +317,134 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _showIncomingCallScreen(CallModel call) {
     // Prevent duplicate navigation
     if (_isInCallScreen) {
-      print('[HomeScreen] Already in call screen, skipping incoming call navigation');
+      print(
+        '[HomeScreen] Already in call screen, skipping incoming call navigation',
+      );
       return;
     }
 
     // Mark that we're entering call screen
     setState(() => _isInCallScreen = true);
 
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => IncomingCallScreen(
-          incomingCall: call,
-          onAccept: () async {
-            try {
-              Navigator.of(context).pop();
-              
-              // Accept the call in Firebase
-              await CallService.acceptCall(
-                callId: call.callId,
-                receiverId: call.receiverId,
-              );
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => IncomingCallScreen(
+              incomingCall: call,
+              onAccept: () async {
+                try {
+                  Navigator.of(context).pop();
 
-              // Get current user to determine local/remote UIDs
-              final currentUser = await AuthService.getCurrentUser();
-              if (currentUser == null || !mounted) return;
+                  // Accept the call in Firebase
+                  await CallService.acceptCall(
+                    callId: call.callId,
+                    receiverId: call.receiverId,
+                  );
 
-              // Convert user IDs to integers for Agora (using hashCode)
-              final localUid = CallService.agoraUidFromUserId(currentUser.uid);
-              final remoteUid = CallService.agoraUidFromUserId(call.initiatorId);
+                  // Get current user to determine local/remote UIDs
+                  final currentUser = await AuthService.getCurrentUser();
+                  if (currentUser == null || !mounted) return;
 
-              // Get Agora token from Cloud Function
-              final token = await CallService.getAgoraToken(
-                channelName: call.callId,
-                uid: localUid,
-              );
+                  // Convert user IDs to integers for Agora (using hashCode)
+                  final localUid = CallService.agoraUidFromUserId(
+                    currentUser.uid,
+                  );
+                  final remoteUid = CallService.agoraUidFromUserId(
+                    call.initiatorId,
+                  );
 
-              // Initialize and setup Agora service
-              final agoraService = AgoraService();
-              await agoraService.initialize();
-              await agoraService.joinChannel(
-                channelName: call.callId,
-                uid: localUid,
-                token: token,
-                isVideoCall: call.callType == 'video',
-              );
+                  // Get Agora token from Cloud Function
+                  final token = await CallService.getAgoraToken(
+                    channelName: call.callId,
+                    uid: localUid,
+                  );
 
-              if (!mounted) return;
+                  // Initialize and setup Agora service
+                  final agoraService = AgoraService();
+                  await agoraService.initialize();
+                  await agoraService.joinChannel(
+                    channelName: call.callId,
+                    uid: localUid,
+                    token: token,
+                    isVideoCall: call.callType == CallType.video,
+                  );
 
-              // Navigate to in-call screen
-              await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => EnhancedInCallScreen(
-                    callModel: call,
-                    agoraService: agoraService,
-                    remoteUid: remoteUid,
-                    onEndCall: () async {
-                      try {
-                        await CallService.endCall(
-                          callId: call.callId,
-                          endReason: 'user_ended',
-                        );
-                        await agoraService.dispose();
-                      } catch (e) {
-                        print('[HomeScreen] Error in onEndCall: $e');
-                      }
-                      
-                      // Safely pop after current frame
-                      if (context.mounted) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (context.mounted && Navigator.of(context).canPop()) {
-                            Navigator.of(context).pop();
+                  if (!mounted) return;
+
+                  // Navigate to in-call screen
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => EnhancedInCallScreen(
+                        callModel: call,
+                        agoraService: agoraService,
+                        remoteUid: remoteUid,
+                        onEndCall: () async {
+                          try {
+                            await CallService.endCall(
+                              callId: call.callId,
+                              endReason: CallEndReason.userEnded,
+                            );
+                            await agoraService.dispose();
+                          } catch (e) {
+                            print('[HomeScreen] Error in onEndCall: $e');
                           }
-                        });
-                      }
-                    },
-                  ),
-                ),
-              );
 
-              // Call screen was closed, clear the flag
-              if (mounted) {
-                setState(() => _isInCallScreen = false);
-              }
-            } catch (e) {
-              print('[HomeScreen] Error accepting call: $e');
-              
-              // Clear the flag on error
-              if (mounted) {
-                setState(() => _isInCallScreen = false);
-              }
+                          // Safely pop after current frame
+                          if (context.mounted) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (context.mounted &&
+                                  Navigator.of(context).canPop()) {
+                                Navigator.of(context).pop();
+                              }
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  );
 
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Failed to join call: $e')),
+                  // Call screen was closed, clear the flag
+                  if (mounted) {
+                    setState(() => _isInCallScreen = false);
+                  }
+                } catch (e) {
+                  print('[HomeScreen] Error accepting call: $e');
+
+                  // Clear the flag on error
+                  if (mounted) {
+                    setState(() => _isInCallScreen = false);
+                  }
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Failed to join call: $e')),
+                    );
+                  }
+                }
+              },
+              onReject: () async {
+                Navigator.of(context).pop();
+
+                // Clear the flag on reject
+                if (mounted) {
+                  setState(() => _isInCallScreen = false);
+                }
+
+                await CallService.rejectCall(
+                  callId: call.callId,
+                  initiatorId: call.initiatorId,
                 );
-              }
-            }
-          },
-          onReject: () async {
-            Navigator.of(context).pop();
-            
-            // Clear the flag on reject
-            if (mounted) {
-              setState(() => _isInCallScreen = false);
-            }
-
-            await CallService.rejectCall(
-              callId: call.callId,
-              initiatorId: call.initiatorId,
-            );
-          },
-        ),
-      ),
-    ).then((_) {
-      // Clear flag when incoming call screen is dismissed
-      if (mounted) {
-        setState(() => _isInCallScreen = false);
-      }
-    });
+              },
+            ),
+          ),
+        )
+        .then((_) {
+          // Clear flag when incoming call screen is dismissed
+          if (mounted) {
+            setState(() => _isInCallScreen = false);
+          }
+        });
   }
 
   Future<void> _ensureUnlocked() async {

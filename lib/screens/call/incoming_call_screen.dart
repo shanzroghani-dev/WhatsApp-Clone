@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:whatsapp_clone/models/call_model.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
 import 'package:whatsapp_clone/core/notification_service.dart';
+import 'package:whatsapp_clone/chat/call_service_utils.dart';
 
 class IncomingCallScreen extends StatefulWidget {
   final CallModel incomingCall;
@@ -83,7 +84,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                widget.incomingCall.callType == 'video'
+                widget.incomingCall.callType == CallType.video
                     ? 'Video Call'
                     : 'Voice Call',
                 style: theme.textTheme.labelMedium?.copyWith(
@@ -156,8 +157,9 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
                   child: Text(
                     'Timeout in $_secondsRemaining seconds',
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color:
-                          _secondsRemaining <= 10 ? Colors.red : Colors.orange,
+                      color: _secondsRemaining <= 10
+                          ? Colors.red
+                          : Colors.orange,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -193,7 +195,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
                   },
                   backgroundColor: Colors.green,
                   child: Icon(
-                    widget.incomingCall.callType == 'video'
+                    widget.incomingCall.callType == CallType.video
                         ? Icons.videocam
                         : Icons.call,
                   ),
