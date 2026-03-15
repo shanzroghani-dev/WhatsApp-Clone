@@ -36,14 +36,11 @@ class CustomTextField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: theme.textTheme.labelMedium,
-        ),
+        Text(label, style: theme.textTheme.labelMedium),
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
@@ -57,13 +54,19 @@ class CustomTextField extends StatelessWidget {
           decoration: InputDecoration(
             hintText: hint,
             errorText: errorText,
-            prefixIcon: prefixIcon != null 
-                ? Icon(prefixIcon, color: theme.iconTheme.color?.withOpacity(0.6)) 
+            prefixIcon: prefixIcon != null
+                ? Icon(
+                    prefixIcon,
+                    color: theme.iconTheme.color?.withOpacity(0.6),
+                  )
                 : null,
             suffixIcon: suffixIcon != null
                 ? GestureDetector(
                     onTap: onSuffixIconTap,
-                    child: Icon(suffixIcon, color: theme.iconTheme.color?.withOpacity(0.6)),
+                    child: Icon(
+                      suffixIcon,
+                      color: theme.iconTheme.color?.withOpacity(0.6),
+                    ),
                   )
                 : null,
           ),

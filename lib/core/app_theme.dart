@@ -19,7 +19,7 @@ class AppTheme {
       onError: AppColors.white,
     ),
     scaffoldBackgroundColor: AppColors.lightBg,
-    
+
     // AppBar theme
     appBarTheme: AppBarTheme(
       backgroundColor: AppColors.lightSurface,
@@ -29,10 +29,7 @@ class AppTheme {
       surfaceTintColor: Colors.transparent,
       shadowColor: Colors.black.withOpacity(0.1),
       scrolledUnderElevation: 1,
-      iconTheme: const IconThemeData(
-        color: AppColors.lightText,
-        size: 24,
-      ),
+      iconTheme: const IconThemeData(color: AppColors.lightText, size: 24),
       titleTextStyle: AppTypography.heading3.copyWith(
         color: AppColors.lightText,
         fontWeight: FontWeight.w700,
@@ -138,25 +135,36 @@ class AppTheme {
     ),
 
     // Divider
-    dividerTheme: const DividerThemeData(
-      color: Colors.grey,
-      thickness: 1,
-    ),
+    dividerTheme: const DividerThemeData(color: Colors.grey, thickness: 1),
 
     // Text theme
     textTheme: TextTheme(
       displayLarge: AppTypography.heading1.copyWith(color: AppColors.lightText),
-      displayMedium: AppTypography.heading2.copyWith(color: AppColors.lightText),
+      displayMedium: AppTypography.heading2.copyWith(
+        color: AppColors.lightText,
+      ),
       displaySmall: AppTypography.heading3.copyWith(color: AppColors.lightText),
-      headlineSmall: AppTypography.heading3.copyWith(color: AppColors.lightText),
+      headlineSmall: AppTypography.heading3.copyWith(
+        color: AppColors.lightText,
+      ),
       titleLarge: AppTypography.bodyBold.copyWith(color: AppColors.lightText),
-      titleMedium: AppTypography.bodyMedium.copyWith(color: AppColors.lightText),
+      titleMedium: AppTypography.bodyMedium.copyWith(
+        color: AppColors.lightText,
+      ),
       bodyLarge: AppTypography.body.copyWith(color: AppColors.lightText),
-      bodyMedium: AppTypography.body.copyWith(color: AppColors.lightTextSecondary),
-      bodySmall: AppTypography.captionRegular.copyWith(color: AppColors.lightTextSecondary),
+      bodyMedium: AppTypography.body.copyWith(
+        color: AppColors.lightTextSecondary,
+      ),
+      bodySmall: AppTypography.captionRegular.copyWith(
+        color: AppColors.lightTextSecondary,
+      ),
       labelLarge: AppTypography.button.copyWith(color: AppColors.primary),
-      labelMedium: AppTypography.caption.copyWith(color: AppColors.lightTextSecondary),
-      labelSmall: AppTypography.captionRegular.copyWith(color: AppColors.lightTextSecondary),
+      labelMedium: AppTypography.caption.copyWith(
+        color: AppColors.lightTextSecondary,
+      ),
+      labelSmall: AppTypography.captionRegular.copyWith(
+        color: AppColors.lightTextSecondary,
+      ),
     ),
   );
 
@@ -176,7 +184,7 @@ class AppTheme {
       onError: AppColors.white,
     ),
     scaffoldBackgroundColor: AppColors.darkBg,
-    
+
     // AppBar theme
     appBarTheme: AppBarTheme(
       backgroundColor: AppColors.darkSurface,
@@ -186,10 +194,7 @@ class AppTheme {
       surfaceTintColor: Colors.transparent,
       shadowColor: Colors.black.withOpacity(0.3),
       scrolledUnderElevation: 1,
-      iconTheme: const IconThemeData(
-        color: AppColors.darkText,
-        size: 24,
-      ),
+      iconTheme: const IconThemeData(color: AppColors.darkText, size: 24),
       titleTextStyle: AppTypography.heading3.copyWith(
         color: AppColors.darkText,
         fontWeight: FontWeight.w700,
@@ -295,10 +300,7 @@ class AppTheme {
     ),
 
     // Divider
-    dividerTheme: const DividerThemeData(
-      color: Colors.grey,
-      thickness: 1,
-    ),
+    dividerTheme: const DividerThemeData(color: Colors.grey, thickness: 1),
 
     // Text theme
     textTheme: TextTheme(
@@ -309,11 +311,19 @@ class AppTheme {
       titleLarge: AppTypography.bodyBold.copyWith(color: AppColors.darkText),
       titleMedium: AppTypography.bodyMedium.copyWith(color: AppColors.darkText),
       bodyLarge: AppTypography.body.copyWith(color: AppColors.darkText),
-      bodyMedium: AppTypography.body.copyWith(color: AppColors.darkTextSecondary),
-      bodySmall: AppTypography.captionRegular.copyWith(color: AppColors.darkTextSecondary),
+      bodyMedium: AppTypography.body.copyWith(
+        color: AppColors.darkTextSecondary,
+      ),
+      bodySmall: AppTypography.captionRegular.copyWith(
+        color: AppColors.darkTextSecondary,
+      ),
       labelLarge: AppTypography.button.copyWith(color: AppColors.primary),
-      labelMedium: AppTypography.caption.copyWith(color: AppColors.darkTextSecondary),
-      labelSmall: AppTypography.captionRegular.copyWith(color: AppColors.darkTextSecondary),
+      labelMedium: AppTypography.caption.copyWith(
+        color: AppColors.darkTextSecondary,
+      ),
+      labelSmall: AppTypography.captionRegular.copyWith(
+        color: AppColors.darkTextSecondary,
+      ),
     ),
   );
 }

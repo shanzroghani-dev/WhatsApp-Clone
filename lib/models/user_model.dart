@@ -26,41 +26,41 @@ class UserModel {
     this.isOnline = false,
     DateTime? createdAt,
     DateTime? lastUpdated,
-  })  : lastSeen = lastSeen ?? DateTime.now(),
-        createdAt = createdAt ?? DateTime.now(),
-        lastUpdated = lastUpdated ?? DateTime.now();
+  }) : lastSeen = lastSeen ?? DateTime.now(),
+       createdAt = createdAt ?? DateTime.now(),
+       lastUpdated = lastUpdated ?? DateTime.now();
 
   /// Convert to JSON for Firestore
   Map<String, dynamic> toJson() => {
-        'uid': uid,
-        'uniqueNumber': uniqueNumber,
-        'email': email,
-        'displayName': displayName,
-        'profilePic': profilePic,
-        'status': status,
-        'publicKey': publicKey,
-        'fcmToken': fcmToken,
-        'lastSeen': lastSeen,
-        'isOnline': isOnline,
-        'createdAt': createdAt,
-        'lastUpdated': lastUpdated,
-      };
+    'uid': uid,
+    'uniqueNumber': uniqueNumber,
+    'email': email,
+    'displayName': displayName,
+    'profilePic': profilePic,
+    'status': status,
+    'publicKey': publicKey,
+    'fcmToken': fcmToken,
+    'lastSeen': lastSeen,
+    'isOnline': isOnline,
+    'createdAt': createdAt,
+    'lastUpdated': lastUpdated,
+  };
 
   /// Create from Firestore JSON
   factory UserModel.fromJson(Map<String, dynamic> json) => UserModel(
-        uid: json['uid'] as String,
-        uniqueNumber: json['uniqueNumber'] as String,
-        email: json['email'] as String,
-        displayName: json['displayName'] as String,
-        profilePic: json['profilePic'] as String? ?? '',
-        status: json['status'] as String? ?? 'Available',
-        publicKey: json['publicKey'] as String? ?? '',
-        fcmToken: json['fcmToken'] as String? ?? '',
-        lastSeen: (json['lastSeen'] as dynamic)?.toDate() ?? DateTime.now(),
-        isOnline: json['isOnline'] as bool? ?? false,
-        createdAt: (json['createdAt'] as dynamic)?.toDate() ?? DateTime.now(),
-        lastUpdated: (json['lastUpdated'] as dynamic)?.toDate() ?? DateTime.now(),
-      );
+    uid: json['uid'] as String,
+    uniqueNumber: json['uniqueNumber'] as String,
+    email: json['email'] as String,
+    displayName: json['displayName'] as String,
+    profilePic: json['profilePic'] as String? ?? '',
+    status: json['status'] as String? ?? 'Available',
+    publicKey: json['publicKey'] as String? ?? '',
+    fcmToken: json['fcmToken'] as String? ?? '',
+    lastSeen: (json['lastSeen'] as dynamic)?.toDate() ?? DateTime.now(),
+    isOnline: json['isOnline'] as bool? ?? false,
+    createdAt: (json['createdAt'] as dynamic)?.toDate() ?? DateTime.now(),
+    lastUpdated: (json['lastUpdated'] as dynamic)?.toDate() ?? DateTime.now(),
+  );
 
   /// Copy with modifications
   UserModel copyWith({
@@ -76,22 +76,22 @@ class UserModel {
     bool? isOnline,
     DateTime? createdAt,
     DateTime? lastUpdated,
-  }) =>
-      UserModel(
-        uid: uid ?? this.uid,
-        uniqueNumber: uniqueNumber ?? this.uniqueNumber,
-        email: email ?? this.email,
-        displayName: displayName ?? this.displayName,
-        profilePic: profilePic ?? this.profilePic,
-        status: status ?? this.status,
-        publicKey: publicKey ?? this.publicKey,
-        fcmToken: fcmToken ?? this.fcmToken,
-        lastSeen: lastSeen ?? this.lastSeen,
-        isOnline: isOnline ?? this.isOnline,
-        createdAt: createdAt ?? this.createdAt,
-        lastUpdated: lastUpdated ?? this.lastUpdated,
-      );
+  }) => UserModel(
+    uid: uid ?? this.uid,
+    uniqueNumber: uniqueNumber ?? this.uniqueNumber,
+    email: email ?? this.email,
+    displayName: displayName ?? this.displayName,
+    profilePic: profilePic ?? this.profilePic,
+    status: status ?? this.status,
+    publicKey: publicKey ?? this.publicKey,
+    fcmToken: fcmToken ?? this.fcmToken,
+    lastSeen: lastSeen ?? this.lastSeen,
+    isOnline: isOnline ?? this.isOnline,
+    createdAt: createdAt ?? this.createdAt,
+    lastUpdated: lastUpdated ?? this.lastUpdated,
+  );
 
   @override
-  String toString() => 'UserModel(uid: $uid, uniqueNumber: $uniqueNumber, displayName: $displayName)';
+  String toString() =>
+      'UserModel(uid: $uid, uniqueNumber: $uniqueNumber, displayName: $displayName)';
 }

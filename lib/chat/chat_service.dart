@@ -89,10 +89,10 @@ class ChatService {
     try {
       final senderProfile = await FirebaseService.getUserByUid(fromId);
       senderName = senderProfile?.displayName;
-      
+
       final receiverProfile = await FirebaseService.getUserByUid(toId);
       receiverFcmToken = receiverProfile?.fcmToken;
-      
+
       // Detect message type from attachment prefix
       if (isAttachmentMessage(text)) {
         final attachment = parseAttachmentPayload(text);
@@ -283,7 +283,8 @@ class ChatService {
     await for (final msg in FirebaseService.listenForIncomingMessages(
       receiverUid,
     )) {
-      final incomingSenderUid = (msg['fromId'] as String?) ?? (msg['senderUID'] as String?);
+      final incomingSenderUid =
+          (msg['fromId'] as String?) ?? (msg['senderUID'] as String?);
       if (incomingSenderUid == null || incomingSenderUid != senderUid) continue;
 
       final remoteId = msg['id'] as String?;
@@ -346,11 +347,12 @@ class ChatService {
       return '[Message could not be decrypted]';
     }
     return EncryptionService.decryptForUsers(
-      cipher,
-      iv,
-      senderUid,
-      receiverUid,
-    ) ?? '[Message could not be decrypted]';
+          cipher,
+          iv,
+          senderUid,
+          receiverUid,
+        ) ??
+        '[Message could not be decrypted]';
   }
 
   /// Helper: Parse message model from Firebase data
@@ -368,7 +370,8 @@ class ChatService {
       senderUid: senderUid,
       receiverUid: receiverUid,
     );
-    final timestamp = (msg['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch;
+    final timestamp =
+        (msg['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch;
 
     return MessageModel(
       id: (msg['localMessageId'] as String?) ?? const Uuid().v4(),
@@ -426,18 +429,24 @@ class ChatService {
       final currentTimeMs = DateTime.now().millisecondsSinceEpoch;
       final diffMs = currentTimeMs - messageTimestamp;
       final fiveMinutesMs = 5 * 60 * 1000;
-      
+
       if (diffMs > fiveMinutesMs) {
-        throw Exception('Messages can only be deleted for everyone within 5 minutes of sending');
+        throw Exception(
+          'Messages can only be deleted for everyone within 5 minutes of sending',
+        );
       }
     }
 
     // Must have remoteId to delete from Firebase
     if (remoteId == null || remoteId.isEmpty) {
-      throw Exception('Cannot delete: message does not have a Firebase ID (remoteId is null)');
+      throw Exception(
+        'Cannot delete: message does not have a Firebase ID (remoteId is null)',
+      );
     }
 
-    print('[ChatService] Deleting for everyone: messageId=$messageId, remoteId=$remoteId');
+    print(
+      '[ChatService] Deleting for everyone: messageId=$messageId, remoteId=$remoteId',
+    );
 
     // Delete from Firebase using remoteId
     try {
@@ -452,7 +461,7 @@ class ChatService {
     try {
       await LocalDBService.deleteMessage(messageId);
       print('[ChatService] ✓ Deleted from local DB: $messageId');
-      
+
       // Also delete by remoteId if different
       if (remoteId != messageId) {
         await LocalDBService.deleteMessageByRemoteId(remoteId);
@@ -471,13 +480,19 @@ class ChatService {
   }
 
   /// Delete entire conversation from local database only (Delete for me)
-  static Future<void> deleteConversationForMe(String userId1, String userId2) async {
+  static Future<void> deleteConversationForMe(
+    String userId1,
+    String userId2,
+  ) async {
     await LocalDBService.deleteConversation(userId1, userId2);
     await LocalDBService.removeChatListEntry(userId1, userId2);
   }
 
   /// Delete entire conversation from Firebase and local database (Delete for everyone)
-  static Future<void> deleteConversationForEveryone(String userId1, String userId2) async {
+  static Future<void> deleteConversationForEveryone(
+    String userId1,
+    String userId2,
+  ) async {
     try {
       await FirebaseService.deleteConversationFromCloud(userId1, userId2);
       print('[ChatService] Deleted conversation from cloud');
@@ -491,7 +506,9 @@ class ChatService {
   }
 
   /// Legacy method - defaults to "Delete for me"
-  @Deprecated('Use deleteConversationForMe or deleteConversationForEveryone instead')
+  @Deprecated(
+    'Use deleteConversationForMe or deleteConversationForEveryone instead',
+  )
   static Future<void> deleteConversation(String userId1, String userId2) async {
     await deleteConversationForMe(userId1, userId2);
   }
@@ -532,7 +549,7 @@ class ChatService {
             item['senderUID'] as String,
           );
           senderName = senderProfile?.displayName;
-          
+
           final receiverProfile = await FirebaseService.getUserByUid(
             item['receiverUID'] as String,
           );
@@ -566,16 +583,19 @@ class ChatService {
   /// Sync undelivered incoming messages (fetch missed messages)
   static Future<void> syncIncomingMessages(String receiverUid) async {
     try {
-      final undelivered = await FirebaseService.getUndeliveredMessages(receiverUid);
-      
+      final undelivered = await FirebaseService.getUndeliveredMessages(
+        receiverUid,
+      );
+
       for (final msg in undelivered) {
-        final senderUid = (msg['fromId'] as String?) ?? (msg['senderUID'] as String?);
+        final senderUid =
+            (msg['fromId'] as String?) ?? (msg['senderUID'] as String?);
         if (senderUid == null || senderUid.isEmpty) continue;
 
         final remoteId = msg['id'] as String?;
         if (remoteId != null &&
             await LocalDBService.messageExistsByRemoteId(remoteId)) {
-            await FirebaseService.markAsDelivered(remoteId);
+          await FirebaseService.markAsDelivered(remoteId);
           continue;
         }
 
@@ -615,7 +635,8 @@ class ChatService {
     await for (final msg in FirebaseService.listenForIncomingMessages(
       receiverUid,
     )) {
-      final senderUid = (msg['fromId'] as String?) ?? (msg['senderUID'] as String?);
+      final senderUid =
+          (msg['fromId'] as String?) ?? (msg['senderUID'] as String?);
       if (senderUid == null || senderUid.isEmpty) continue;
 
       final remoteId = msg['id'] as String?;

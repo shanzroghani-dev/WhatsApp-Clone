@@ -49,7 +49,7 @@ class AuthService {
 
       final result = registered.copyWith(publicKey: keyPair.publicKey);
       NotificationService.setCurrentUserUid(result.uid);
-      
+
       // Save FCM token for push notifications
       try {
         final fcmToken = await NotificationService.getToken();
@@ -63,7 +63,7 @@ class AuthService {
       } catch (e) {
         print('[AuthService] ⚠ Failed to save FCM token: $e');
       }
-      
+
       return result;
     } catch (e, stackTrace) {
       print('[AuthService] ⚠ Firebase registration failed: $e');
@@ -141,7 +141,7 @@ class AuthService {
           publicKey: keyPair.publicKey,
         );
       }
-      
+
       // Save FCM token for push notifications
       try {
         final fcmToken = await NotificationService.getToken();
@@ -155,7 +155,7 @@ class AuthService {
       } catch (e) {
         print('[AuthService] ⚠ Failed to save FCM token: $e');
       }
-      
+
       NotificationService.setCurrentUserUid(user.uid);
       return user;
     } catch (_) {

@@ -17,7 +17,8 @@ class AgoraService extends ChangeNotifier {
   double _beautyLightening = 0.7;
   double _beautyRedness = 0.1;
   double _beautySharpness = 0.3;
-  int _networkQuality = 0; // 0 = Unknown, 1 = Excellent, 2 = Good, 3 = Poor, 4 = Bad, 5 = Very Bad, 6 = Down
+  int _networkQuality =
+      0; // 0 = Unknown, 1 = Excellent, 2 = Good, 3 = Poor, 4 = Bad, 5 = Very Bad, 6 = Down
   Map<String, dynamic> _callStats = {};
   bool _isDisposed = false;
 
@@ -78,12 +79,18 @@ class AgoraService extends ChangeNotifier {
                 _hasRemoteUser = false;
                 notifyListeners();
               },
-          onNetworkQuality: (RtcConnection connection, int remoteUid, QualityType txQuality, QualityType rxQuality) {
-            final tx = txQuality.index;
-            final rx = rxQuality.index;
-            _networkQuality = tx > rx ? tx : rx;
-            notifyListeners();
-          },
+          onNetworkQuality:
+              (
+                RtcConnection connection,
+                int remoteUid,
+                QualityType txQuality,
+                QualityType rxQuality,
+              ) {
+                final tx = txQuality.index;
+                final rx = rxQuality.index;
+                _networkQuality = tx > rx ? tx : rx;
+                notifyListeners();
+              },
           onRtcStats: (RtcConnection connection, RtcStats stats) {
             _callStats = {
               'duration': stats.duration,
@@ -136,7 +143,7 @@ class AgoraService extends ChangeNotifier {
     if (_isDisposed) {
       throw Exception('Cannot join channel with a disposed AgoraService');
     }
-    
+
     if (!_isInitialized) {
       await initialize();
       // Additional wait to ensure initialization is complete
@@ -152,7 +159,9 @@ class AgoraService extends ChangeNotifier {
       await requestPermissions(isVideoCall: isVideoCall);
 
       // Enable audio
-      await _engine.setChannelProfile(ChannelProfileType.channelProfileCommunication);
+      await _engine.setChannelProfile(
+        ChannelProfileType.channelProfileCommunication,
+      );
       await _engine.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
       await _engine.enableAudio();
 
@@ -195,16 +204,20 @@ class AgoraService extends ChangeNotifier {
         } catch (e) {
           lastError = e is Exception ? e : Exception(e.toString());
           retryCount++;
-          
+
           if (retryCount <= maxRetries) {
-            print('[Agora] Join attempt $retryCount failed, retrying... Error: $e');
+            print(
+              '[Agora] Join attempt $retryCount failed, retrying... Error: $e',
+            );
             await Future.delayed(Duration(milliseconds: 200 * retryCount));
           }
         }
       }
 
       // If we get here, all retries failed
-      print('[Agora] Error joining channel after $maxRetries retries: $lastError');
+      print(
+        '[Agora] Error joining channel after $maxRetries retries: $lastError',
+      );
       throw lastError ?? Exception('Failed to join channel');
     } catch (e) {
       print('[Agora] Error joining channel: $e');
@@ -231,7 +244,9 @@ class AgoraService extends ChangeNotifier {
       await _engine.muteLocalAudioStream(mute);
       _isAudioMuted = mute;
       notifyListeners();
-      print('[Agora] Audio ${mute ? "muted" : "unmuted"} - remote user ${mute ? "cannot" : "can"} hear you');
+      print(
+        '[Agora] Audio ${mute ? "muted" : "unmuted"} - remote user ${mute ? "cannot" : "can"} hear you',
+      );
     } catch (e) {
       print('[Agora] Error toggling audio: $e');
       // Don't rethrow to prevent blocking call flow
@@ -244,9 +259,7 @@ class AgoraService extends ChangeNotifier {
         // Enable sequence: enable camera -> publish track -> unmute -> preview.
         await _engine.enableLocalVideo(true);
         await _engine.updateChannelMediaOptions(
-          ChannelMediaOptions(
-            publishCameraTrack: true,
-          ),
+          ChannelMediaOptions(publishCameraTrack: true),
         );
         await _engine.muteLocalVideoStream(false);
         await _engine.startPreview();
@@ -255,11 +268,11 @@ class AgoraService extends ChangeNotifier {
       } else {
         // Disable sequence: unpublish camera track first, then mute/stop local capture.
         // This guarantees remote users stop receiving camera frames immediately.
-        print('[Agora] Disabling video - unpublishing camera track for remote users');
+        print(
+          '[Agora] Disabling video - unpublishing camera track for remote users',
+        );
         await _engine.updateChannelMediaOptions(
-          ChannelMediaOptions(
-            publishCameraTrack: false,
-          ),
+          ChannelMediaOptions(publishCameraTrack: false),
         );
         await _engine.muteLocalVideoStream(true);
         await _engine.enableLocalVideo(false);
@@ -300,10 +313,12 @@ class AgoraService extends ChangeNotifier {
     try {
       if (enable) {
         // Start screen sharing
-        await _engine.startScreenCapture(const ScreenCaptureParameters2(
-          captureAudio: true,
-          captureVideo: true,
-        ));
+        await _engine.startScreenCapture(
+          const ScreenCaptureParameters2(
+            captureAudio: true,
+            captureVideo: true,
+          ),
+        );
         print('[Agora] Screen sharing started');
       } else {
         // Stop screen sharing
@@ -324,7 +339,9 @@ class AgoraService extends ChangeNotifier {
         // Note: Cloud recording requires Agora RESTful API integration
         // This is a placeholder for local recording indication
         _isRecording = true;
-        print('[Agora] Recording started (cloud recording requires backend integration)');
+        print(
+          '[Agora] Recording started (cloud recording requires backend integration)',
+        );
       } else {
         _isRecording = false;
         print('[Agora] Recording stopped');
@@ -369,7 +386,8 @@ class AgoraService extends ChangeNotifier {
     await _engine.setBeautyEffectOptions(
       enabled: enabled,
       options: BeautyOptions(
-        lighteningContrastLevel: LighteningContrastLevel.lighteningContrastNormal,
+        lighteningContrastLevel:
+            LighteningContrastLevel.lighteningContrastNormal,
         lighteningLevel: _beautyLightening,
         smoothnessLevel: _beautySmoothness,
         rednessLevel: _beautyRedness,
@@ -443,16 +461,24 @@ class AgoraService extends ChangeNotifier {
     try {
       switch (effect) {
         case VoiceEffectPreset.none:
-          await _engine.setVoiceBeautifierPreset(VoiceBeautifierPreset.voiceBeautifierOff);
+          await _engine.setVoiceBeautifierPreset(
+            VoiceBeautifierPreset.voiceBeautifierOff,
+          );
           break;
         case VoiceEffectPreset.vigorous:
-          await _engine.setVoiceBeautifierPreset(VoiceBeautifierPreset.chatBeautifierMagnetic);
+          await _engine.setVoiceBeautifierPreset(
+            VoiceBeautifierPreset.chatBeautifierMagnetic,
+          );
           break;
         case VoiceEffectPreset.deep:
-          await _engine.setVoiceBeautifierPreset(VoiceBeautifierPreset.chatBeautifierFresh);
+          await _engine.setVoiceBeautifierPreset(
+            VoiceBeautifierPreset.chatBeautifierFresh,
+          );
           break;
         case VoiceEffectPreset.mellow:
-          await _engine.setVoiceBeautifierPreset(VoiceBeautifierPreset.chatBeautifierVitality);
+          await _engine.setVoiceBeautifierPreset(
+            VoiceBeautifierPreset.chatBeautifierVitality,
+          );
           break;
       }
       print('[Agora] Voice effect applied: $effect');
@@ -508,16 +534,16 @@ class AgoraService extends ChangeNotifier {
 
 /// Video quality presets
 enum VideoQualityPreset {
-  low,    // 360p @ 15fps
+  low, // 360p @ 15fps
   medium, // 540p @ 24fps
-  high,   // 720p @ 30fps (default)
-  ultra,  // 1080p @ 30fps
+  high, // 720p @ 30fps (default)
+  ultra, // 1080p @ 30fps
 }
 
 /// Voice effect presets
 enum VoiceEffectPreset {
   none,
-  vigorous,  // Magnetic voice
-  deep,      // Fresh voice
-  mellow,    // Vitality voice
+  vigorous, // Magnetic voice
+  deep, // Fresh voice
+  mellow, // Vitality voice
 }

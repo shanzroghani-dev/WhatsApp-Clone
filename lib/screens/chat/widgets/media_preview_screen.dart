@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:whatsapp_clone/core/design_tokens.dart';
-import 'package:whatsapp_clone/screens/chat/helpers/chat_helpers.dart';
+import 'package:whatsapp_clone/utils/date_time_utils.dart';
 
 class MediaPreviewScreen extends StatefulWidget {
   final String filePath;
@@ -176,7 +176,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
-                                ChatHelpers.formatDuration(
+                                DateTimeUtils.formatDurationMMSS(
                                   _videoController.value.position,
                                 ),
                                 style: theme.textTheme.labelMedium?.copyWith(
@@ -196,7 +196,7 @@ class _MediaPreviewScreenState extends State<MediaPreviewScreen> {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                ChatHelpers.formatDuration(
+                                DateTimeUtils.formatDurationMMSS(
                                   _videoController.value.duration,
                                 ),
                                 style: theme.textTheme.labelMedium?.copyWith(

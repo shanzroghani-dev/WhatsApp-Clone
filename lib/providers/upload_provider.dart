@@ -11,7 +11,8 @@ class UploadStateNotifier extends ChangeNotifier {
   Map<String, String> get cachedAttachmentPaths => _cachedAttachmentPaths;
   Map<String, String> get videoThumbnailPaths => _videoThumbnailPaths;
 
-  bool isUploading(String messageId) => _uploadingMessageIds.contains(messageId);
+  bool isUploading(String messageId) =>
+      _uploadingMessageIds.contains(messageId);
 
   // Setters
   void addUploadingMessageId(String id) {

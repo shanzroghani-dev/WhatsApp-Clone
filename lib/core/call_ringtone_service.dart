@@ -18,7 +18,7 @@ class CallRingtoneService {
     }
 
     await stopRingtone();
-    
+
     _currentCallId = callId;
     _isPlaying = true;
 
@@ -26,10 +26,10 @@ class CallRingtoneService {
       // Configure audio player for continuous looping
       await _audioPlayer.setReleaseMode(ReleaseMode.loop);
       await _audioPlayer.setVolume(1.0);
-      
+
       // Try multiple ringtone sources in order of preference
       bool played = false;
-      
+
       // 1. Try to play custom ringtone from assets (if available)
       try {
         await _audioPlayer.play(AssetSource('sounds/ringtone.mp3'));
@@ -38,12 +38,14 @@ class CallRingtoneService {
       } catch (e) {
         print('[Ringtone] Custom ringtone not found: $e');
       }
-      
+
       // 2. If custom ringtone failed, try online fallback
       if (!played) {
         try {
           await _audioPlayer.play(
-            UrlSource('https://www.soundjay.com/phone/sounds/phone-calling-1.mp3'),
+            UrlSource(
+              'https://www.soundjay.com/phone/sounds/phone-calling-1.mp3',
+            ),
           );
           played = true;
           print('[Ringtone] Playing online ringtone for call $callId');
@@ -51,7 +53,7 @@ class CallRingtoneService {
           print('[Ringtone] Online ringtone failed: $e');
         }
       }
-      
+
       // 3. Final fallback: use native system ringtone
       if (!played) {
         print('[Ringtone] Using system ringtone fallback');

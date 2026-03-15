@@ -20,7 +20,10 @@ class ProfileService {
     await FirebaseService.updateUserProfile(uid: uid, profilePicUrl: url);
     final existing = _memoryCache[uid];
     if (existing != null) {
-      final updated = existing.copyWith(profilePic: url, lastUpdated: DateTime.now());
+      final updated = existing.copyWith(
+        profilePic: url,
+        lastUpdated: DateTime.now(),
+      );
       _memoryCache[uid] = updated;
       await LocalDBService.cacheUserProfile(updated);
     }
@@ -75,7 +78,10 @@ class ProfileService {
     }
   }
 
-  static Future<UserModel?> getProfile(String uid, {bool forceRefresh = false}) async {
+  static Future<UserModel?> getProfile(
+    String uid, {
+    bool forceRefresh = false,
+  }) async {
     if (!forceRefresh && _memoryCache.containsKey(uid)) {
       return _memoryCache[uid];
     }
@@ -113,7 +119,10 @@ class ProfileService {
 
     final existing = _memoryCache[uid];
     if (existing != null) {
-      final updated = existing.copyWith(publicKey: publicKey, lastUpdated: DateTime.now());
+      final updated = existing.copyWith(
+        publicKey: publicKey,
+        lastUpdated: DateTime.now(),
+      );
       _memoryCache[uid] = updated;
       await LocalDBService.cacheUserProfile(updated);
     }
